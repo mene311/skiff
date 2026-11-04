@@ -307,6 +307,7 @@ static void web_power_on(void)
 {
     persist_boot();
     bank_boot();                          /* main.c: the patterns (bank.c; phase 5: every project's steps) */
+    phr_boot();                           /* main.c (phrase-arp): the shared phrase pool (phr.c) */
     settings_init();
     usb_serial_apply();
     lcd_init();

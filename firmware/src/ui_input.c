@@ -2549,6 +2549,9 @@ static void ui_input(void)
         }
     }
     ui_notices();
+    phr_cap_page = (uint8_t)(!ui.home && !ui.menu && !ui.confirm && !page_over && cur_page()->fam == FAM_ARP);
+                                                       /* (phrase-arp) the capture pass runs only on the phrase's
+                                                        * screen; anywhere else REC records what the arp plays */
 }
 
 /* ---------------------------------------------------- panel setup --- */
