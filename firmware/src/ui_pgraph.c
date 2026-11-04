@@ -647,6 +647,49 @@ static void graph_arp(const track_t *t, uint16_t c)
 {
     static const uint8_t EX[3] = {60, 64, 67};
     uint32_t list[65], cnt = t->nheld ? t->nheld : 3u, len = 0, i, j, o, m = (uint32_t)t->p[P_AMODE];
+    if (phr_mode(m)) {                           /* (phrase-arp) the pool phrase: 16 rows, the root's row centred,
+                                                 * a tile as long as the step's gate on its offset's row, the off
+                                                 * steps late by SWING; the steps CHANCE would skip outlined */
+        uint32_t r, s, used = 0;
+        int32_t pitch, th, base, sw = t->p[P_ASWING] * 12 / 250;
+        pitch = 102 / 16 > 8 ? 8 : 102 / 16;
+        th = pitch - 2 > 2 ? pitch - 2 : 2;
+        base = 115 - (102 - 15 * pitch) / 2;
+        for (i = 0; i < 16u; i++) {
+            int32_t y = base - (int32_t)i * pitch;
+            uint32_t x;
+            for (x = 30; x <= 228; x += 3)
+                cv_pset(x, y, T_LINE);
+        }
+        for (i = 0; i < 16u; i++) {
+            uint32_t gw, skip, col;
+            int32_t x = 30 + (int32_t)(i * 124u / 10u) + ((i & 1u) ? sw : 0), y;
+            s = phr_step(m - AM_PHR1, i);
+            if (!s)
+                continue;
+            used++;
+            r = s >> 4u;
+            gw = 2 + (s & 15u) * 10 / 15;
+            skip = ((i * 2654435761u >> 25) & 127u) > (uint32_t)t->p[P_APROB];
+            col = i % 4u == 0u ? T_TEXT : c;
+            y = base - (int32_t)r * pitch - th / 2;
+            if (ux.crypt) {                      /* (Skiff C4) CRYPT: a note a #, a skipped one a crossed skull */
+                if (skip)
+                    cr_skull(x - 1, y + th / 2 - 4, T_MID, T_SURF, 1);
+                else
+                    cr_ch(x - 1, y + (pitch >= 16 ? 7 : 4), pitch >= 16 ? &AF_V : &AF_S, '#',
+                          i % 4u == 0u ? T_TEXT : T_THEME);
+                continue;
+            }
+            if (skip)
+                cv_frame(x, y, gw, th, T_MID);
+            else
+                cv_rect(x, y, gw, th, col);
+        }
+        if (!used)
+            pg_text(30, 117, "EMPTY: REC TO RECORD", T_DIM);
+        return;
+    }
     uint32_t oct = t->p[P_AOCT] > 0 ? (uint32_t)t->p[P_AOCT] : 1u;
     int32_t pitch, th, base, gw = 2 + t->p[P_AGATE] * 10 / 127, sw = t->p[P_ASWING] * 12 / 250;
     char nb[6];

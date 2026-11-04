@@ -245,14 +245,16 @@ static int arp_new_modes(void)
     track_t *t;
     ui_power_on();
     t = &trk[0];
-    ok = TP[P_AMODE].max == 14 && str_eq(TP[P_AMODE].names[6], "REPEAT") && str_eq(TP[P_AMODE].names[7], "DNUP") &&
+    ok = TP[P_AMODE].max == 22 && str_eq(TP[P_AMODE].names[6], "REPEAT") && str_eq(TP[P_AMODE].names[7], "DNUP") &&
          str_eq(TP[P_AMODE].names[8], "UP+8") && str_eq(TP[P_AMODE].names[9], "CONV") &&
          str_eq(TP[P_AMODE].names[10], "DIVG") && str_eq(TP[P_AMODE].names[11], "PINKY") &&
          str_eq(TP[P_AMODE].names[12], "THUMB") && str_eq(TP[P_AMODE].names[13], "WALK") &&
-         str_eq(TP[P_AMODE].names[14], "CHORD");
-    for (i = 0; i <= 14u; i++)
+         str_eq(TP[P_AMODE].names[14], "CHORD") && str_eq(TP[P_AMODE].names[15], "PH1") &&
+         str_eq(TP[P_AMODE].names[22], "PH8");
+    for (i = 0; i <= 22u; i++)
         ok &= strlen(TP[P_AMODE].names[i]) <= 6u;
-    bad += check("ARP modes: OFF..REPEAT keep their numbers, DNUP UP+8 CONV DIVG PINKY THUMB WALK CHORD appended (<= 6 chars)", ok);
+    bad += check("ARP modes: OFF..REPEAT keep their numbers, DNUP UP+8 CONV DIVG PINKY THUMB WALK CHORD appended, "
+                 "then the pool phrases PH1..PH8 (<= 6 chars)", ok);
     /* the modes before 1.2 play as they did */
     arp_fresh(t, AM_UP, 1, CEG, 3);   ok = arp_plays(t, (const uint8_t[]){60, 64, 67, 60}, 4);
     arp_fresh(t, AM_DN, 1, CEG, 3);   ok &= arp_plays(t, (const uint8_t[]){67, 64, 60, 67}, 4);
@@ -390,6 +392,101 @@ static int arp_new_modes(void)
     arp_fresh(t, AM_OFF, 1, CEG, 0);
     return bad;
 }
+/* (phrase-arp) the pool phrases: the shapes above keep their behavior; PH1..PH8 play the shared pool's phrases,
+ * recorded by the capture pass. */
+static void phr_put(track_t *t, uint32_t s, int32_t off, uint32_t gate)   /* a step of the mode's phrase */
+{
+    phr_set((uint32_t)t->p[P_AMODE] - AM_PHR1, s, (uint8_t)((uint32_t)(off & 15) << 4 | (gate & 15u)));
+}
+static void phr_fresh(track_t *t, int32_t oct, const uint8_t *notes, uint32_t n)
+{
+    uint32_t i;
+    song.rec = song.playing = 0;                  /* playback, not the capture pass */
+    if (t->arp_note)
+        arp_off(t);
+    t->nheld = 0; t->arp_phys = 0;
+    t->p[P_AOCT] = (int16_t)oct; t->p[P_APROB] = 127;
+    for (i = 0; i < n; i++)
+        arp_add(t, notes[i]);
+}
+static int phrase_arp(void)
+{
+    static const uint8_t CEG[3] = {60, 64, 67};
+    static const uint8_t WANT[6] = {60, 64, 67, 0, 63, 60};
+    int bad = 0, ok;
+    uint32_t i;
+    track_t *t;
+    ui_power_on();
+    t = &trk[0];
+    phr_pool_clear();
+    ok = TP[P_AMODE].max == 22 && str_eq(TP[P_AMODE].names[14], "CHORD") && str_eq(TP[P_AMODE].names[15], "PH1") &&
+         str_eq(TP[P_AMODE].names[22], "PH8");
+    bad += check("(phrase-arp) ARP MODE: the shapes keep their numbers, PH1..PH8 appended", ok);
+    t->p[P_AMODE] = AM_PHR1;
+    phr_put(t, 0, 0, 15); phr_put(t, 1, 4, 10); phr_put(t, 2, 7, 5); phr_put(t, 4, 3, 8);
+    phr_fresh(t, 1, CEG, 3);
+    t->arp_pos = 0xFFFFFFF;
+    arp_tick(t, CTL);
+    ok = t->arp_note == 60 && t->arp_off == div_samples((uint32_t)t->p[P_ARATE]);   /* gate 15: the whole step */
+    for (i = 1; i < 6u; i++) {
+        t->arp_pos = 0xFFFFFFF;
+        arp_tick(t, CTL);
+        ok &= t->arp_note == WANT[i];
+    }
+    bad += check("(phrase-arp) a phrase: C E G, a hole plays silence, then the loop from the top at its length", ok);
+    phr_pool_clear();
+    for (i = 0; i < 16u; i++)
+        phr_put(t, i, 0, 15);                    /* the root alone, every step */
+    phr_fresh(t, 2, CEG, 3);
+    ok = 1;
+    for (i = 0; i < 16u; i++) {
+        t->arp_pos = 0xFFFFFFF;
+        arp_tick(t, CTL);
+        ok &= t->arp_note == 60u;
+    }
+    t->arp_pos = 0xFFFFFFF; arp_tick(t, CTL);    /* the second pass: an octave up */
+    ok &= t->arp_note == 72u;
+    t->arp_pos = 0xFFFFFFF; arp_tick(t, CTL);    /* .. and through the pass */
+    ok &= t->arp_note == 72u;
+    for (i = 0; i < 14u; i++) {
+        t->arp_pos = 0xFFFFFFF;
+        arp_tick(t, CTL);
+    }
+    t->arp_pos = 0xFFFFFFF; arp_tick(t, CTL);    /* OCT 2: the third pass at the root again */
+    ok &= t->arp_note == 60u;
+    bad += check("(phrase-arp) OCTAVE: the phrase at the root, an octave up each pass through OCT 2", ok);
+    phr_fresh(t, 1, (const uint8_t[]){67, 60, 64}, 3);   /* held G C E, as played */
+    t->p[P_AORDER] = 1;
+    t->arp_pos = 0xFFFFFFF; arp_tick(t, CTL);
+    ok = t->arp_note == 67;                      /* PLAYED: the first held is the root */
+    t->p[P_AORDER] = 0;
+    t->arp_pos = 0xFFFFFFF; arp_tick(t, CTL);
+    ok &= t->arp_note == 60;                     /* NOTE: the lowest */
+    bad += check("(phrase-arp) ORDER: the root is the first played or the lowest held note", ok);
+    phr_pool_clear();
+    cap_root[0] = cap_note[0] = 0xFFu; cap_seen[0] = 0; cap_was[0] = 0; cap_tm[0] = 0;
+    t->p[P_AMODE] = AM_PHR2;
+    song.rec = 1; song.playing = 1;
+    input_on(t, 60, 100);                        /* the first note: the root, step 0 */
+    ok = cap_root[0] == 60u && phr_step(1u, 0u) == 0u;    /* the gate comes on release */
+    t->arp_pos = 0xFFFFFFF; arp_tick(t, CTL);    /* step 0 begins */
+    t->arp_pos = 0xFFFFFFF; arp_tick(t, CTL);    /* step 1 begins */
+    input_on(t, 64, 100);                        /* E: +4, step 1; the held C gets a full gate (legato) */
+    ok &= (phr_step(1u, 0u) & 15u) == 15u && phr_step(1u, 1u) == 0x40u;
+    input_on(t, 67, 100);                        /* G: the same step, the first one wins */
+    ok &= (phr_step(1u, 1u) & 0xF0u) == 0x40u;
+    input_off(t, 60);                            /* (its gate was the legato's) */
+    arp_tick(t, CTL);
+    input_off(t, 64);                            /* the release writes the gate */
+    ok &= (phr_step(1u, 1u) & 15u) != 0u && (phr_step(1u, 1u) & 15u) <= 15u;
+    input_off(t, 67);
+    song.rec = 0; song.playing = 0;
+    arp_tick(t, CTL);                            /* the pass ended: reset + persist */
+    ok &= cap_root[0] == 0xFFu && cap_note[0] == 0xFFu && cap_seen[0] == 0;
+    bad += check("(phrase-arp) capture: the root, each next note its offset on the clock's step, one a step, gates", ok);
+    return bad;
+}
+
 /* ------------------------------------------------ 1.1 parameter locks --- */
 /* the transport on to the next step of t (its seq_idx changes) */
 static void lock_next(track_t *t)
@@ -1241,6 +1338,7 @@ int main(void)
 {
     int bad = motion_recording() + motion_capacity() + probability_playback() + compact_project() + fun7_89() + loads_and_song() + repeat_mode();
     bad += arp_new_modes();
+    bad += phrase_arp();
     bad += lock_playback() + lock_edit() + lock_project() + lock_ui() + lock_undo() + auto_list();
     bad += takes();                                   /* Skiff: TAKES (take.c, ui_take.c) */
     bad += conditions();                              /* Skiff: trig conditions (seq.c step_cond_ok) */

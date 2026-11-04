@@ -338,6 +338,8 @@ if [ -f build/gen/felucca_tables.h ]; then
     run "persistence: deferred settings, retry and failed-save rollback; (2.0) a FUN5 slot OLD FORMAT" "$OUT/persistence_test"
     $CC -w $LEGACY -Ibuild/gen -Ifirmware/src -o "$OUT/persistence_test_legacy" tests/persistence_test.c -lm
     run "persistence, the converter's build (FELUCCA_LEGACY): an SKF2 autosave, FUN5 and FUN7 slots" "$OUT/persistence_test_legacy"
+    $CC -w -Ibuild/gen -Ifirmware/src -o "$OUT/phr_test" tests/phr_test.c -lm
+    run "phrase pool (phrase-arp): A/B copies, torn saves, fallback, newest wins" "$OUT/phr_test"
     $CC -w -Ibuild/gen -Ifirmware/src -o "$OUT/bank_test" tests/bank_test.c -lm
     run "pattern bank (Skiff): patterns kept exactly, torn saves, fallback, wear, the sequence wrap" "$OUT/bank_test"
     $CC -w $LEGACY -Ibuild/gen -Ifirmware/src -o "$OUT/bank_test_legacy" tests/bank_test.c -lm

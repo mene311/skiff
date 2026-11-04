@@ -3,7 +3,8 @@
 /* Parameter descriptors, formatting and the page table. */
 static const char *const N_LWAVE[] = {"SIN", "TRI", "SAW", "SQR", "S&H"};
 static const char *const N_AMODE[] = {"OFF", "UP", "DN", "UPDN", "RND", "ORD", "REPEAT",   /* (append-only: seq.c AM_*) */
-                                       "DNUP", "UP+8", "CONV", "DIVG", "PINKY", "THUMB", "WALK", "CHORD"};
+                                       "DNUP", "UP+8", "CONV", "DIVG", "PINKY", "THUMB", "WALK", "CHORD",
+                                       "PH1", "PH2", "PH3", "PH4", "PH5", "PH6", "PH7", "PH8"};   /* (phrase-arp: the pool's) */
 static const char *const N_DIV[] = {"1/4", "1/8", "1/16", "1/32", "8T", "16T", "1/2", "1/1", "2BAR", "4BAR"};
 /* (Skiff 1.3, from Felucca 1.5.1) the delay's TIME (G_DTIME): N_DIV's ten (their values kept), then the dotted ones
  * appended (stored values: append-only; firmware before reads them as 4BAR). A list of its own: ARP RATE, SEQ DIV and

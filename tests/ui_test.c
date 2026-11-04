@@ -693,6 +693,28 @@ static int test_rec(void)
         t->p[P_AMODE] = 0;
         input_off(t, 60);
     }
+    /* (phrase-arp) REC with a pool phrase: the keys write the phrase, the sequencer's steps stay */
+    ui_power_on();
+    {
+        track_t *t = &trk[0];
+        uint32_t i, n = 0;
+        t->engine = t->eng_req;
+        t->p[P_AMODE] = AM_PHR1;
+        t->p[P_APROB] = 127;
+        phr_pool_clear();
+        cap_root[0] = cap_note[0] = 0xFFu; cap_seen[0] = 0; cap_was[0] = 0; cap_tm[0] = 0;
+        song.rec = 1;
+        song.playing = 1;
+        input_on(t, 60, 100);
+        for (i = 0; i < NSTEP; i++)
+            n += t->step[i].n;
+        bad += check("phrase ARP on: the key held is not recorded (the sequencer's steps stay)", n == 0);
+        bad += check("phrase ARP on: the key becomes the phrase's root (step 0, the gate on release)",
+                     cap_root[0] == 60u && phr_step(0, 0) == 0);
+        input_off(t, 60);
+        bad += check("phrase ARP on: the release writes the step's gate", (phr_step(0, 0) & 15u) != 0u);
+        t->p[P_AMODE] = 0;
+    }
     return bad;
 }
 

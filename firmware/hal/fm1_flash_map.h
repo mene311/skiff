@@ -56,8 +56,10 @@
 #define FL_SMP_HI       0x000EA000u
 #define FL_SLOT_LO      0x000C2000u                /*   USR1, one 80 KiB sample slot (SMP_USER_SIZE) */
 #define FL_SLOT_HI      0x000D6000u
-#define FL_BANK_LO      0x000D6000u                /*   the pattern pool's twenty sectors (bank.c BK_NSECT) */
-#define FL_BANK_HI      0x000EA000u
+#define FL_BANK_LO      0x000D6000u                /*   the pattern pool's eighteen sectors (bank.c BK_NSECT) */
+#define FL_BANK_HI      0x000E8000u
+#define FL_PHRASE_LO    0x000E8000u                /*   the phrase pool's A/B sectors (the pool's last two of before) */
+#define FL_PHRASE_HI    0x000EA000u
 /* USRFLASH is the stock firmware's mapping (its settings at 0xC2000, 8 presets from 0xC3000) with its end marker
  * "usrdata\0" at 0xEAFF8: while the marker is there the stock firmware trusts the area and never rebuilds it. Before
  * the first write into USRFLASH the marker's sector is erased (storage.c st_stock_release), so a return to stock
@@ -74,9 +76,11 @@
 _Static_assert(FL_WIN_SAFE(FL_DATA_LO, FL_DATA_HI), "SMK: FL_DATA overlaps a protected range");
 _Static_assert(FL_WIN_SAFE(FL_OTA_LO, FL_OTA_HI), "SMK: FL_OTA overlaps a protected range");
 _Static_assert(FL_WIN_SAFE(FL_SMP_LO, FL_SMP_HI), "SMK: FL_SMP overlaps a protected range");
-_Static_assert(FL_SLOT_LO == FL_SMP_LO && FL_SLOT_HI == FL_BANK_LO && FL_BANK_HI == FL_SMP_HI &&
-               FL_SLOT_HI - FL_SLOT_LO == 0x14000u && FL_BANK_HI - FL_BANK_LO == 20u * 0x1000u,
-               "SMK: USRFLASH = one 80 KiB sample slot + the pattern pool's twenty sectors");
+_Static_assert(FL_SLOT_LO == FL_SMP_LO && FL_SLOT_HI == FL_BANK_LO && FL_BANK_HI == FL_PHRASE_LO &&
+               FL_PHRASE_HI == FL_SMP_HI &&
+               FL_SLOT_HI - FL_SLOT_LO == 0x14000u && FL_BANK_HI - FL_BANK_LO == 18u * 0x1000u &&
+               FL_PHRASE_HI - FL_PHRASE_LO == 2u * 0x1000u,
+               "SMK: USRFLASH = one 80 KiB sample slot + the pattern pool's eighteen sectors + the phrase pair");
 _Static_assert(FL_WIN_SAFE(FL_STOCKTAG_LO, FL_STOCKTAG_HI) && FL_STOCKTAG_LO == FL_SMP_HI &&
                FL_STOCKTAG_OFF + 8u == FL_STOCKTAG_HI, "SMK: the stock marker's sector");
 _Static_assert(FL_WIN_SAFE(FL_APP_LO, FL_APP_HI), "SMK: FL_APP overlaps a protected range");
@@ -111,8 +115,10 @@ _Static_assert(FL_DATA_HI <= FL_OTA_LO && FL_APP_HI <= FL_DATA_LO, "SMK: windows
 #define FL_AUTO_HI      0x000E7000u                /* the OTA staging */
 #define FL_BANK_LO      0x000E7000u                /* Skiff: the pattern bank (bank.c), the VM area's last two */
 #define FL_BANK_HI      0x000E9000u                /* sectors; 0xE9000 is the package's BTIF (tools/fm1pkg_make.py) */
-#define FL_USR_LO       0x000EA000u                /* .. and its USR region, 18 sectors: the bank's other sectors */
-#define FL_USR_HI       0x000FC000u
+#define FL_USR_LO       0x000EA000u                /* .. and its USR region, 18 sectors: the bank's other 16 and the */
+#define FL_USR_HI       0x000FC000u                /* phrase pool's A/B pair (phrase-arp: FL_PHRASE below) */
+#define FL_PHRASE_LO    0x000FA000u                /* Skiff (phrase-arp): the phrase pool's A/B sectors, the bank's last */
+#define FL_PHRASE_HI    0x000FC000u                /* two of before (bank.c BK_NSECT 18, 16 chunk homes + 2 spares) */
 /* Felucca's own store (projects, user samples; settings; the autosave; Skiff's pattern bank) */
 #define FL_STORE_OK(off, n) (FL_IN(off, n, FL_DATA_LO, FL_DATA_HI) || FL_IN(off, n, FL_GLOB_LO, FL_GLOB_HI) || \
                              FL_IN(off, n, FL_AUTO_LO, FL_AUTO_HI) || FL_IN(off, n, FL_BANK_LO, FL_BANK_HI) || \
