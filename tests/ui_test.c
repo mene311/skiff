@@ -670,28 +670,28 @@ static int test_rec(void)
     frame();
     bad += check("#133 STEP, armed and stopped: the key writes the cursor step (and moves on)",
                  trk[0].step[0].n == 1 && ui.cursor == 1);
-    /* ARP: the arp's notes are recorded, not the key */
+    /* ARP: (phrase-arp) REC captures the keys into the phrase; the sequencer's steps stay untouched */
     ui_power_on();
     {
         track_t *t = &trk[0];
-        uint32_t i, n = 0, notes = 0;
+        uint32_t i, n = 0;
         t->engine = t->eng_req;
         t->p[P_AMODE] = 1;
         t->p[P_AOCT] = 2;
         t->p[P_APROB] = 127;
+        phr_pool_clear();
+        cap_root[0] = cap_note[0] = 0xFFu; cap_seen[0] = 0; cap_was[0] = 0; cap_tm[0] = 0;
         song.rec = 1;
         song.playing = 1;
         input_on(t, 60, 100);
         for (i = 0; i < NSTEP; i++)
             n += t->step[i].n;
-        bad += check("ARP on: the key held is not recorded", n == 0);
-        arp_tick(t, 1);
-        for (i = 0; i < NSTEP; i++)
-            if (t->step[i].n)
-                notes = t->step[i].note[0];
-        bad += check("ARP on: the note the arp plays is recorded", notes == 60u);
-        t->p[P_AMODE] = 0;
+        bad += check("ARP on: the key held is not recorded (the sequencer's steps stay)", n == 0);
+        bad += check("ARP on: the key becomes the phrase's root (step 0, the gate on release)",
+                     cap_root[0] == 60u && phr_step(0, 0) == 0);
         input_off(t, 60);
+        bad += check("ARP on: the release writes the step's gate", (phr_step(0, 0) & 15u) != 0u);
+        t->p[P_AMODE] = 0;
     }
     return bad;
 }
@@ -6776,7 +6776,10 @@ static int test_solo(void)
     t->p[P_AHOLD] = 0;
     events_block(CTL);
 
-    t->p[P_AMODE] = AM_UP;                                        /* the ARP on */
+    t->p[P_AMODE] = 1;                                           /* (phrase-arp) the ARP on, PH1: E then G */
+    phr_pool_clear();
+    phr_set(0, 0, (uint8_t)((4 << 4) | 15));                       /* E from the chord's root */
+    phr_set(0, 1, (uint8_t)((7 << 4) | 15));                       /* G */
     key_down(CW);                                                 /* (its chord has the black key's E) */
     key_down(F_4);
     ok = t->nheld == 3u && t->arp_phys == 3u && gates() == 1u && solo_on(t, E);

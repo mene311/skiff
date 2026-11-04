@@ -2,8 +2,9 @@
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* Parameter descriptors, formatting and the page table. */
 static const char *const N_LWAVE[] = {"SIN", "TRI", "SAW", "SQR", "S&H"};
-static const char *const N_AMODE[] = {"OFF", "UP", "DN", "UPDN", "RND", "ORD", "REPEAT",   /* (append-only: seq.c AM_*) */
-                                       "DNUP", "UP+8", "CONV", "DIVG", "PINKY", "THUMB", "WALK", "CHORD"};
+/* (phrase-arp) the arp plays only user-recorded phrases from the shared pool (phr.c): 0 OFF, 1..8 the pool
+ * phrases. A project saved by upstream Skiff holds the old shape values 1..14; param_fit clamps them to 8 (PH8). */
+static const char *const N_AMODE[] = {"OFF", "PH1", "PH2", "PH3", "PH4", "PH5", "PH6", "PH7", "PH8"};
 static const char *const N_DIV[] = {"1/4", "1/8", "1/16", "1/32", "8T", "16T", "1/2", "1/1", "2BAR", "4BAR"};
 /* (Skiff 1.3, from Felucca 1.5.1) the delay's TIME (G_DTIME): N_DIV's ten (their values kept), then the dotted ones
  * appended (stored values: append-only; firmware before reads them as 4BAR). A list of its own: ARP RATE, SEQ DIV and
@@ -114,7 +115,7 @@ static const param_desc_t TP[P_COUNT] = {
     [P_AMODE] = PE("MODE", N_AMODE, 0),
     [P_ARATE] = PE("RATE", N_DIV, 2),
     [P_AOCT] = PD("OCTAVE", F_INT, 1, 4, 1),
-    [P_AGATE] = PD("GATE", F_PCT, 1, 127, 64),
+    [P_AGATE] = PD("GATE", F_PCT, 1, 127, 127),   /* (phrase-arp) a scale over the recorded gates: 127 = as recorded */
     [P_ASWING] = PD("SWING", F_PCT, 0, 100, 0),
     [P_APROB] = PD("CHANCE", F_PCT, 0, 127, 127),
     [P_AHOLD] = PE("HOLD", N_ONOFF, 0),

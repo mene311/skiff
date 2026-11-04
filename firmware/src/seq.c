@@ -57,7 +57,7 @@ static uint8_t kb_sol[KB_N], in_solo;    /* (2.1, #74) per key: a black key of Q
                                           * into input_on / input_off now are one's (they never go into the ARP) */
 static uint8_t in_key;                   /* the key (+ 1) whose notes go into input_on now (key_on), 0: none (MIDI IN) */
 /* (Skiff 1.3, from Felucca 1.5 #191) where each track's held[i] came from, so the arp maps it again as it plays
- * (arp_list: TRN, ROOT, SCALE, QNT as they are now). held_key: the key + 1 (bits 0..4) and the octave buttons then + 3
+ * (phr_root: TRN, ROOT, SCALE, QNT as they are now). held_key: the key + 1 (bits 0..4) and the octave buttons then + 3
  * (bits 5..7); 0: not a key's own mapping (MIDI IN, the DRUM grid, an engine's own key map), held[i] plays as it is.
  * held_dt: held[i] above the key's note (a CHRD chord's other notes). Out of track_t: its size stays as the audio
  * ISR's trk[] indexing wants it */
@@ -227,7 +227,7 @@ static __attribute__((noinline)) int32_t kb_degree(const track_t *t, int32_t deg
 }
 
 /* key k's note with the octave buttons at oct: QNT, ROOT, SCALE, TRN (KB_SILENT: a black key under WHITE). The keys
- * (kb_map) and the arp's latched keys (arp_list: as the keys play now, the octave they were pressed in) */
+ * (kb_map) and the arp's latched keys (phr_root: as the keys play now, the octave they were pressed in) */
 static uint32_t kb_pitch(const track_t *t, uint32_t k, int32_t oct)
 {
     static const int8_t PLACE[12] = {0, 0, 1, 1, 2, 3, 2, 4, 3, 5, 4, 6};   /* among the keys of its colour from C */
@@ -311,6 +311,89 @@ static void rec_note(track_t *t, uint32_t note, uint32_t vel);
 static void rec_release(track_t *t, uint32_t note);
 static uint32_t step_samples(const track_t *t, uint32_t period, uint32_t idx);
 static int rec_on(const track_t *t) { return ((song.rec >> trk_index(t)) & 1u) && song.playing; }
+static void take_note(track_t *t, uint32_t note, uint32_t vel);   /* (take.c, included below) */
+
+/* (phrase-arp) the capture pass: with a track armed and its ARP on a pool phrase, the keys played write the phrase
+ * (input_on / input_off below). The first note of the pass is the phrase root (step 0); each further note lands on the
+ * step the arp clock stands on, one note a step, the first one wins (an arp phrase is monophonic). Its gate comes from
+ * how long the key is held against the RATE step (one step = a full gate); release each note before the next, a held
+ * one gets a full gate when the next starts (legato). The keys sound as without the ARP; nothing goes into the
+ * sequencer's steps. The pass ends when REC is disarmed or the transport stops: arp_step persists the pool. */
+static uint8_t cap_was[NTRK], cap_step[NTRK];
+static uint8_t cap_root[NTRK] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};   /* (255: no pass yet) */
+static uint8_t cap_note[NTRK] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+static uint32_t cap_tm[NTRK];
+static uint16_t cap_seen[NTRK];
+static int phr_capturing(const track_t *t) { return rec_on(t) && t->p[P_AMODE] != 0; }
+
+/* the phrase's root: the held notes' mapped pitch, the first played (ORDER PLAYED) or the lowest (ORDER NOTE); -1 when
+ * there is none (no keys, or every key silent now: QNT WHITE's black keys). Mirrors what the arp's note list did: each
+ * key mapped again through kb_pitch (TRN, ROOT, SCALE, QNT as they are now, the octave it was pressed in; a chord's
+ * note as far above it), the rest (MIDI IN) as it came. */
+static int32_t phr_root(const track_t *t)
+{
+    uint32_t i = trk_index(t), k, x;
+    int32_t root = -1;
+    const uint8_t *hk = held_key[i];
+    const int8_t *dt = held_dt[i];
+    for (k = 0; k < t->nheld; k++) {
+        x = t->held[k];
+        if (hk[k] != 0u) {
+            uint32_t m = kb_pitch(t, (hk[k] & 31u) - 1u, (int32_t)(hk[k] >> 5) - 3);
+            if (m == KB_SILENT)
+                continue;
+            x = (uint32_t)clamp((int32_t)m + dt[k], 0, 127);
+        }
+        if (t->p[P_AORDER])                          /* PLAYED: the first valid key */
+            return (int32_t)x;
+        if (root < 0 || (int32_t)x < root)           /* NOTE: the lowest */
+            root = (int32_t)x;
+    }
+    return root;
+}
+
+static void phr_cap_on(track_t *t, uint32_t note, uint32_t vel)
+{
+    uint32_t i = trk_index(t), id = (uint32_t)t->p[P_AMODE] - 1u, s, off;
+    if (cap_note[i] != 0xFFu) {                      /* the note before, still held: its gate is a full step (legato) */
+        uint8_t v = phr_step(id, cap_step[i]);
+        phr_set(id, cap_step[i], (uint8_t)(v | 15u));
+    }
+    if (cap_root[i] == 0xFFu) {                      /* the pass's first note: the phrase root, step 0 */
+        cap_root[i] = (uint8_t)note;
+        s = 0;
+        t->arp_pos = 0xFFFFFFF;                      /* the clock starts now */
+        t->arp_idx = 0xFFFFFFFFu;
+    } else {
+        s = t->arp_idx & 15u;
+        if ((cap_seen[i] >> s) & 1u) {               /* this step has the pass's note: the first one wins */
+            take_note(t, note, vel);
+            trk_note_on(t, note, vel);
+            return;
+        }
+    }
+    off = (uint32_t)clamp((int32_t)note - (int32_t)cap_root[i], -8, 7);
+    phr_set(id, s, (uint8_t)(off << 4));             /* the gate comes on release */
+    cap_seen[i] |= (uint16_t)(1u << s);
+    cap_note[i] = (uint8_t)note;
+    cap_step[i] = (uint8_t)s;
+    cap_tm[i] = 0;
+    take_note(t, note, vel);
+    trk_note_on(t, note, vel);
+}
+
+static void phr_cap_off(track_t *t, uint32_t note)
+{
+    uint32_t i = trk_index(t), id = (uint32_t)t->p[P_AMODE] - 1u, gate, period;
+    uint8_t v;
+    if (cap_note[i] == 0xFFu || cap_note[i] != (uint8_t)note)
+        return;                                      /* (not the note in the step: another one holds it) */
+    period = div_samples((uint32_t)t->p[P_ARATE]);
+    gate = period ? clamp(cap_tm[i] * 15u / period, 1u, 15u) : 15u;
+    v = phr_step(id, cap_step[i]);
+    phr_set(id, cap_step[i], (uint8_t)(v | gate));
+    cap_note[i] = 0xFFu;
+}
 
 /* Skiff: the play direction (P_DIR). FWD 1..LEN; REV LEN..1; PING up and down, each end once (1 2 3 4 3 2 1 2 ..);
  * RAND any step. A pass is LEN steps played in any direction (seq_cnt: TAKES' and the trig conditions' passes, a
@@ -401,18 +484,16 @@ static __attribute__((noinline)) int step_cond_ok(const track_t *t, const step_t
 }
 #include "motion.c"
 
-/* the ARP's modes (P_AMODE). Append-only: a stored value keeps its meaning (ORD plays as UP, the ORD switch of
- * ARP 2 orders the notes). 1.2 (Discussion #95), over the note list (the held notes low to high, or as played,
- * across OCT octaves), C E G held: DNUP G E C E; UP+8 C E G C' (the first note again an octave above the top);
- * CONV C G E (outside in); DIVG E G C (inside out); PINKY C G E G (the top note between the others); THUMB
- * C E C G (the bottom one); WALK a random step up or down the list (bouncing off its ends); CHORD all the held
- * notes together (the first 4), an octave higher each step through OCT */
-enum { AM_OFF, AM_UP, AM_DN, AM_UPDN, AM_RND, AM_ORD, AM_REPEAT, AM_DNUP, AM_UP8, AM_CONV, AM_DIVG, AM_PINKY,
-       AM_THUMB, AM_WALK, AM_CHORD };
+/* (phrase-arp) the ARP's MODE (P_AMODE): 0 OFF, 1..8 the shared phrase pool's phrases (phr.c). The shapes the arp
+ * played before (UP, DN, UPDN, RND, ORD, REPEAT, DNUP, UP+8, CONV, DIVG, PINKY, THUMB, WALK, CHORD) are gone: the
+ * arp plays only user-recorded phrases. A project saved by upstream Skiff holds the old shape values 1..14, which
+ * params.c's param_fit clamps to 8 (PH8): it loads silent rather than broken. A phrase's step byte: bits 7..4 the
+ * note's signed 4-bit semitone offset from the phrase root (-8..+7), bits 3..0 its gate (0..15, 15 = the whole
+ * step). A step of 0 is empty (no note, no gate). */
 
 static void arp_forget(track_t *t)               /* (its notes ended otherwise: trk_all_off) */
 {
-    t->arp_note = t->arp_ch[0] = t->arp_ch[1] = t->arp_ch[2] = 0;
+    t->arp_note = 0;                             /* ((phrase-arp) arp_ch retired with CHORD) */
 }
 
 /* (2.1, #74) a SOLO black key of track t sounds note (with the ARP on, beside it): the ARP's note-offs and the other
@@ -431,103 +512,14 @@ static void arp_note_off(track_t *t, uint32_t note)
         trk_note_off(t, note);
 }
 
-/* CHORD's notes. Not inlined: they run once an arp step, and kept out of the audio ISR's loop over the tracks
- * (tests/target_budget.py) */
-static __attribute__((noinline)) void arp_chord_off(track_t *t, int rec)   /* the other notes end */
+static void arp_off(track_t *t)                  /* the sounding arp note ends (a recorded one too) */
 {
-    uint32_t i;
-    for (i = 0; i < 3u; i++)
-        if (t->arp_ch[i]) {
-            if (rec)
-                rec_release(t, t->arp_ch[i]);
-            else
-                take_note(t, t->arp_ch[i], 0);       /* (Skiff: TAKES) */
-            arp_note_off(t, t->arp_ch[i]);
-            t->arp_ch[i] = 0;
-        }
-}
-
-static __attribute__((noinline)) void arp_chord(track_t *t, const uint32_t *list, uint32_t n)
-{
-    uint32_t i, nt, top = 0, o = t->arp_idx % (uint32_t)(t->p[P_AOCT] > 0 ? t->p[P_AOCT] : 1);
-    if (n > 4u)
-        n = 4u;
-    for (i = 0; i < n; i++) {                       /* the held notes (sorted or as played), o octaves up */
-        nt = (uint32_t)clamp((int32_t)list[i] + 12 * (int32_t)o, 0, 127);
-        if (nt == 127u && top++)
-            continue;                               /* (notes clamped onto the top one: once) */
-        if (!t->arp_note)
-            t->arp_note = (uint8_t)nt;
-        else
-            t->arp_ch[i - 1u] = (uint8_t)nt;
-        if (rec_on(t))
-            rec_note(t, nt, 100);
-        else
-            take_note(t, nt, 100);                  /* (Skiff: TAKES) */
-        trk_note_on(t, nt, 100);
-    }
-}
-
-static void arp_silence(track_t *t)              /* the sounding arp note(s) end */
-{
-    if (t->arp_ch[0] | t->arp_ch[1] | t->arp_ch[2])
-        arp_chord_off(t, 0);
-    arp_note_off(t, t->arp_note);
-    t->arp_note = 0;
-}
-
-static void arp_off(track_t *t)                  /* the sounding arp note(s) end (a recorded one too) */
-{
-    if (t->arp_ch[0] | t->arp_ch[1] | t->arp_ch[2])
-        arp_chord_off(t, rec_on(t));
     arp_note_off(t, t->arp_note);
     if (rec_on(t))
         rec_release(t, t->arp_note);
     else
         take_note(t, t->arp_note, 0);               /* (Skiff: TAKES) */
     t->arp_note = 0;
-}
-
-/* the place in the note list (len notes) the step arp_idx plays (not inlined, as arp_chord); UP+8 adds its note */
-static __attribute__((noinline)) uint32_t arp_pick(track_t *t, uint32_t *list, uint32_t len)
-{
-    uint32_t i = t->arp_idx, m = (uint32_t)t->p[P_AMODE], cyc, k, w;
-    if (m == AM_UP8 && len < 64u)                   /* UP+8: the first note again over the top */
-        list[len++] = (uint32_t)clamp((int32_t)list[0] + 12 * t->p[P_AOCT], 0, 127);
-    cyc = len > 1u ? 2u * len - 2u : 1u;
-    k = i % cyc;
-    switch (m) {
-    case AM_DN:
-        return len - 1u - i % len;
-    case AM_UPDN:
-        return k < len ? k : cyc - k;
-    case AM_DNUP:
-        return k < len ? len - 1u - k : k - (len - 1u);
-    case AM_RND:
-        return rng() % len;
-    case AM_CONV:
-    case AM_DIVG:
-        k = i % len;
-        if (m == AM_DIVG)
-            k = len - 1u - k;
-        return (k & 1u) ? len - 1u - k / 2u : k / 2u;
-    case AM_PINKY:
-        return len < 2u ? 0u : (k & 1u) ? len - 1u : k / 2u;
-    case AM_THUMB:
-        return len < 2u ? 0u : (k & 1u) ? 1u + k / 2u : 0u;
-    case AM_WALK:
-        w = t->arp_walk;
-        if (!i)
-            w = 0;                                  /* (from the bottom) */
-        else if (w >= len)
-            w = len - 1u;                           /* (notes let go) */
-        else if (len > 1u)
-            w = !w ? 1u : w == len - 1u ? w - 1u : (rng() >> 7) & 1u ? w + 1u : w - 1u;
-        t->arp_walk = (uint8_t)w;
-        return w;
-    default:
-        return i % len;
-    }
 }
 
 /* n: samples the arp advances by (the external clock's while it runs, 0 stopped); gate_n: samples its
@@ -561,95 +553,72 @@ static int click_wanted(void)                  /* CLICK REC: while a track is ar
 {
     return click_mode == CLICK_ON || (click_mode == CLICK_REC && song.rec);
 }
-/* the arp's note list (list, its length returned; 0: nothing to play): the held notes (sorted or as played) over OCT
- * octaves, *cnt of them. (Felucca #191) the notes as they play now, a key's mapped again through kb_pitch (TRN, ROOT,
- * SCALE, QNT now, the octave it was pressed in; a chord's note as far above it), the rest (MIDI IN) as they came; each
- * once (two keys may meet on one note now), a key silent now (a black key, QNT WHITE since) left out. With nothing
- * changed since the keys were pressed, exactly the list of held[] as before. (ui_pgraph.c graph_arp draws it) */
-static uint32_t arp_list(const track_t *t, uint32_t *list, uint32_t *cnt)
-{
-    uint32_t i, j, n = 0, x, s, last = 0, len = 0, o;
-    const uint8_t *hk = held_key[trk_index(t)];
-    const int8_t *dt = held_dt[trk_index(t)];
-    for (i = 0; i < t->nheld; i++) {
-        x = t->held[i];
-        if ((s = hk[i]) != 0u) {
-            x = kb_pitch(t, (s & 31u) - 1u, (int32_t)(s >> 5) - 3);
-            if (x == KB_SILENT)
-                continue;
-            x = (uint32_t)clamp((int32_t)x + dt[i], 0, 127);
-        }
-        last = x;
-        for (j = 0; j < n && list[j] != x; j++)
-            ;
-        if (j == n)
-            list[n++] = x;
-    }
-    *cnt = n;
-    if (!t->p[P_AORDER])
-        for (i = 1; i < n; i++)
-            for (j = i; j > 0 && list[j - 1] > list[j]; j--) {
-                x = list[j];
-                list[j] = list[j - 1];
-                list[j - 1] = x;
-            }
-    for (o = 0; o < (uint32_t)t->p[P_AOCT]; o++)
-        for (i = 0; i < n && len < 64u; i++)
-            list[len++] = clamp((int32_t)list[i] + 12 * (int32_t)o, 0, 127);
-    if (n && t->p[P_AMODE] == AM_REPEAT) { list[0] = last; len = 1; } /* REPEAT: last played note, no octave traversal */
-    return len;
-}
-
-/* an arp step starts (period: its length): the next note of the list. Not inlined: once a step, kept out of the audio
- * ISR's loop over the tracks (tests/target_budget.py) */
+/* an arp step starts (period: its length): the phrase step the clock stands on (phrase-arp). Not inlined: once a
+ * step, kept out of the audio ISR's loop over the tracks (tests/target_budget.py) */
 static __attribute__((noinline)) void arp_fire(track_t *t, uint32_t period)
 {
-    uint32_t cnt, list[64], len, j;
-    if (!(len = arp_list(t, list, &cnt))) {        /* (every key silent now: QNT WHITE's black keys) */
-        if (t->arp_note)
-            arp_off(t);
-        return;
-    }
-    t->arp_idx++;
-    j = t->p[P_AMODE] == AM_CHORD ? 0u : arp_pick(t, list, len);
+    uint32_t s, off, gate, oct, len;
+    int32_t root;
     if (t->arp_note)
         arp_off(t);
-    if ((uint32_t)(rng() & 127u) <= (uint32_t)t->p[P_APROB]) {
-        t->arp_off = period * (uint32_t)t->p[P_AGATE] / 128u;
-        if (t->p[P_AMODE] == AM_CHORD) {            /* CHORD: the first 4 notes, an octave up each step */
-            arp_chord(t, list, cnt);
-            return;
-        }
-        t->arp_note = (uint8_t)list[j];
-        if (rec_on(t))
-            rec_note(t, t->arp_note, 100);           /* recording: what the arp plays */
-        else
-            take_note(t, t->arp_note, 100);         /* (Skiff: TAKES, the same) */
-        trk_note_on(t, t->arp_note, 100);
-    }
+    if ((uint32_t)(rng() & 127u) > (uint32_t)t->p[P_APROB])
+        return;                                     /* CHANCE skipped this step */
+    if ((root = phr_root(t)) < 0)
+        return;                                     /* (no keys, or every key silent now: QNT WHITE's black keys) */
+    len = phr_len_get((uint32_t)t->p[P_AMODE] - 1u);
+    s = phr_step((uint32_t)t->p[P_AMODE] - 1u, t->arp_idx % len);
+    if (!s)
+        return;                                     /* an empty step (a hole): silence, the clock goes on */
+    oct = (t->arp_idx / len) % (uint32_t)(t->p[P_AOCT] > 0 ? t->p[P_AOCT] : 1);   /* a pass an octave up, through OCT */
+    off = s >> 4u;
+    t->arp_note = (uint8_t)clamp(root + (int32_t)(off > 7u ? off - 16u : off) + 12 * (int32_t)oct, 0, 127);
+    gate = (s & 15u) * (uint32_t)t->p[P_AGATE] * period / (15u * 127u);
+    t->arp_off = gate > 0u ? gate : 1u;
+    if (rec_on(t))
+        rec_note(t, t->arp_note, 100);           /* recording: what the arp plays */
+    else
+        take_note(t, t->arp_note, 100);          /* (Skiff: TAKES, the same) */
+    trk_note_on(t, t->arp_note, 100);
 }
 
 static void arp_step(track_t *t, uint32_t n, uint32_t gate_n)
 {
-    uint32_t period;
+    uint32_t i = trk_index(t), period;
     int32_t sw;
+    {   /* (phrase-arp) the capture pass: its end (persist + reset) on REC off or the transport stopping */
+        uint8_t cap = (uint8_t)phr_capturing(t);
+        if (cap_was[i] && !cap) {
+            phr_persist();
+            cap_root[i] = cap_note[i] = 0xFFu;
+            cap_seen[i] = 0;
+            cap_tm[i] = 0;
+        }
+        cap_was[i] = cap;
+    }
     if (t->arp_note) {
         if (t->arp_off <= gate_n)
             arp_off(t);
         else
             t->arp_off -= gate_n;
     }
-    if (!t->p[P_AMODE] || !t->nheld) {
-        if (!t->nheld && t->arp_note)
+    if (!t->p[P_AMODE])
+        return;
+    period = div_samples((uint32_t)t->p[P_ARATE]);
+    if (cap_note[i] != 0xFFu)                        /* the capture note's gate clock (one step = a full gate) */
+        cap_tm[i] = cap_tm[i] + n < period ? cap_tm[i] + n : period;
+    if (!t->nheld && !phr_capturing(t)) {
+        if (t->arp_note)
             arp_off(t);
         return;
     }
-    period = div_samples((uint32_t)t->p[P_ARATE]);
     sw = t->p[P_ASWING] * (int32_t)period / 250;
     t->arp_pos += n;
     if (t->arp_pos < period + (uint32_t)((t->arp_idx & 1u) ? sw : -sw) && t->arp_pos != 0xFFFFFFF + n)
         return;
     t->arp_pos = 0;
+    t->arp_idx++;                                    /* (phrase-arp) the step now playing, the capture's grid */
+    if (phr_capturing(t))
+        return;                                      /* the keys sound and write the pool themselves */
     arp_fire(t, period);
 }
 
@@ -927,13 +896,15 @@ static void input_on(track_t *t, uint32_t note, uint32_t vel)
     last_hits++;
     if (cin_left)
         cin_keep(t, note, vel);
-    if (rec_on(t) && !arp)                          /* (ARP on: arp_tick records its notes) */
+    if (arp && rec_on(t))                           /* (phrase-arp) the pass: the keys sound and write the phrase */
+        phr_cap_on(t, note, vel);
+    else if (rec_on(t) && !arp)
         rec_note(t, note, vel);
     else if (!arp)
         take_note(t, note, vel);                    /* (Skiff) not recorded: TAKES' log (take.c) */
-    if (arp)
+    if (arp && !rec_on(t))
         arp_add(t, note);
-    else
+    else if (!arp)
         trk_note_on(t, note, vel);
 }
 
@@ -950,6 +921,12 @@ static void input_off(track_t *t, uint32_t note)
         for (k = 0; k < cin_n[i]; k++)
             if (cin_note[i][k] == note)
                 cin_up[i] |= (uint8_t)(1u << k);
+    }
+    if (phr_capturing(t)) {                         /* (phrase-arp) the key's end writes the step's gate */
+        phr_cap_off(t, note);
+        take_note(t, note, 0);
+        trk_note_off(t, note);
+        return;
     }
     rec_release(t, note);
     if (!t->p[P_AMODE] || in_solo)
@@ -2041,7 +2018,7 @@ static __attribute__((noinline)) void events_block(uint32_t n)
             if (!t->p[P_AMODE])
                 t->arp_phys = 0;
             if (t->arp_note)
-                arp_silence(t);
+                arp_off(t);                      /* ((phrase-arp) the CHORD-only arp_silence is gone) */
         }
         t->armp = t->p[P_AMODE];
         t->aholdp = t->p[P_AHOLD];

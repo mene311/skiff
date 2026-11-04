@@ -160,6 +160,7 @@ static void fm1_main(void)
 #endif
     persist_boot();
     bank_boot();                                        /* (Skiff) the pattern bank (bank.c) */
+    phr_boot();                                         /* (Skiff, phrase-arp) the shared phrase pool (phr.c) */
 #if FELUCCA_OTA
     if (flash_ok)
         ota_boot_cleanup();                             /* staging area left by an update */

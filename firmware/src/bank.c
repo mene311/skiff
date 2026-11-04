@@ -42,10 +42,10 @@ static int bk_ver(uint32_t v) { return v == BK_VER || v == BK_VER2 || v == BK_VE
 #define BK_MOT (BK_NUDGE + NSTEP / 4u * 3u)
 #define BK_REC (BK_MOT + MOTION_MAX * 4u)
 #define BK_LEN (BK_PER * BK_REC)                   /* a chunk's payload */
-#define BK_NSECT 20u
+#define BK_NSECT 18u                  /* (phrase-arp) 16 chunk homes + 2 wear spares: the pool took 2 sectors */
 #define BK_NONE 0xFFu
 #define BK_MAGIC 0x31424B53u                       /* "SKB1" */
-_Static_assert(BK_REC == 888u && BK_LEN <= 4096u - 256u && BK_CHUNKS + 4u == BK_NSECT, "pattern bank layout");
+_Static_assert(BK_REC == 888u && BK_LEN <= 4096u - 256u && BK_CHUNKS + 2u == BK_NSECT, "pattern bank layout");
 typedef struct { uint32_t magic, chunk, seq, len, sum, rsv[2], hsum; } bk_hdr_t;   /* at a sector's 0 */
 static const uint8_t BK_TIME[5] = {P_SLEN, P_SDIV, P_SSWING, P_SGATE, P_DIR};
 
@@ -74,8 +74,9 @@ static uint8_t bk_bufc;                            /* the chunk + 1 bk_buf holds
                                                     * LIST reads a chunk in, its GETs read on: bank_chunk) */
 
 #if BOARD_SMK37
-/* (SMK-37 Pro) twenty sectors in a row in USRFLASH, after the user sample slot (fm1_flash_map.h FL_BANK); the first
- * erase there releases the stock mapping's marker (storage.c st_stock_release) */
+/* (SMK-37 Pro) eighteen sectors in a row in USRFLASH, after the user sample slot (fm1_flash_map.h FL_BANK); the
+ * phrase pool owns the last two of the twenty of before (FL_PHRASE). The first erase there releases the stock
+ * mapping's marker (storage.c st_stock_release) */
 _Static_assert(FL_BANK_HI - FL_BANK_LO == BK_NSECT * 0x1000u && FL_BANK_LO >= FL_SMP_LO && FL_BANK_HI <= FL_SMP_HI,
                "SMK: the pattern pool's sectors");
 static uint32_t bk_sector(uint32_t i) { return FL_BANK_LO + i % BK_NSECT * 0x1000u; }

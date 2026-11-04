@@ -640,88 +640,62 @@ static void graph_flt(const track_t *t, uint16_t c)
     pg_text_r(228, 135, "HIGH", T_DIM);
 }
 
-/* ARP and ARP 2: the arp's notes over 16 of its steps, as arp_step plays them (the held notes, or C E G as an
- * example; ORDER, OCTAVE, MODE), a tile as long as GATE, the off steps late by SWING; the steps CHANCE would skip (a
- * fixed pick of about as many) outlined; RND and WALK's picks fixed too */
+/* ARP and ARP 2 (phrase-arp): the phrase's 16 steps, each tile as long as the step's gate, its row the step's
+ * semitone offset from the phrase root (the middle row), the off steps late by SWING; the steps CHANCE would skip
+ * (a fixed pick of about as many) outlined. An empty phrase says so: REC records it. */
 static void graph_arp(const track_t *t, uint16_t c)
 {
-    static const uint8_t EX[3] = {60, 64, 67};
-    uint32_t list[65], cnt = t->nheld ? t->nheld : 3u, len = 0, i, j, o, m = (uint32_t)t->p[P_AMODE];
-    uint32_t oct = t->p[P_AOCT] > 0 ? (uint32_t)t->p[P_AOCT] : 1u;
-    int32_t pitch, th, base, gw = 2 + t->p[P_AGATE] * 10 / 127, sw = t->p[P_ASWING] * 12 / 250;
-    char nb[6];
-    if (t->nheld && (len = arp_list(t, list, &cnt)) == 0u) {   /* (the notes as they play now: TRN, SCALE since) */
-        list[0] = 60;                               /* (every key silent now: one row, no tiles' notes matter) */
-        len = cnt = 1;
-    }
-    if (!t->nheld) {
-        for (i = 0; i < cnt; i++)
-            list[i] = EX[i];
-        for (o = 0; o < oct; o++)
-            for (i = 0; i < cnt && len < 64u; i++)
-                list[len++] = (uint32_t)clamp((int32_t)list[i] + 12 * (int32_t)o, 0, 127);
-        if (m == AM_REPEAT) {
-            list[0] = 67u;
-            len = 1;
+    uint32_t m = (uint32_t)t->p[P_AMODE], i, r, s, used = 0;
+    int32_t pitch, th, base, sw = t->p[P_ASWING] * 12 / 250;
+    if (!m) {                                        /* OFF: three quiet rows, as before */
+        pitch = 102 / 4;
+        th = pitch - 2;
+        base = 115;
+        for (i = 0; i < 3u; i++) {
+            int32_t y = base - (int32_t)i * pitch;
+            uint32_t x;
+            for (x = 30; x <= 228; x += 3)
+                cv_pset(x, y, T_LINE);
         }
+        for (i = 0; i < 16u; i++)
+            cv_rect(30 + (int32_t)(i * 124u / 10u) + ((i & 1u) ? sw : 0),
+                    base - (int32_t)(i % 3u) * pitch - th / 2, 5, th, T_DIM);
+        return;
     }
-    if (m == AM_UP8)
-        list[len++] = (uint32_t)clamp((int32_t)list[0] + 12 * (int32_t)oct, 0, 127);
-    pitch = 102 / (int32_t)len > 18 ? 18 : 102 / (int32_t)len;
-    th = pitch >= 12 ? 10 : pitch > 3 ? pitch - 1 : 2;
-    base = 115 - (102 - ((int32_t)len - 1) * pitch) / 2;   /* the rows centred */
-    for (i = 0; i < len; i++) {                      /* the rows, low to high, named when there is room */
-        int32_t y = base - (int32_t)i * pitch, x;
+    pitch = 102 / 16 > 8 ? 8 : 102 / 16;             /* 16 rows: the offsets -8..+7 around the root's row */
+    th = pitch - 2 > 2 ? pitch - 2 : 2;
+    base = 115 - (102 - 15 * pitch) / 2;
+    for (i = 0; i < 16u; i++) {
+        int32_t y = base - (int32_t)i * pitch;
+        uint32_t x;
         for (x = 30; x <= 228; x += 3)
             cv_pset(x, y, T_LINE);
-        if (pitch >= 12) {
-            str_cpy(nb, N_NOTE[list[i] % 12u], 4);
-            pg_text(12, y + 4, nb, T_DIM);
-        }
     }
-    if (!t->nheld)
-        pg_text_r(228, 13, "EXAMPLE: C E G", T_DIM);
     for (i = 0; i < 16u; i++) {
-        uint32_t k = i % (2u * len > 2u ? 2u * len - 2u : 1u), r, n = 1;
-        int32_t x = 30 + (int32_t)(i * 124u / 10u) + ((i & 1u) ? sw : 0), skip;
-        uint32_t rows[4];
-        switch (m) {
-        case AM_DN: r = len - 1u - i % len; break;
-        case AM_UPDN: r = k < len ? k : 2u * len - 2u - k; break;
-        case AM_DNUP: r = k < len ? len - 1u - k : k - (len - 1u); break;
-        case AM_RND:
-        case AM_WALK: r = (i * 2654435761u >> 20) % len; break;
-        case AM_CONV:
-        case AM_DIVG:
-            k = i % len;
-            if (m == AM_DIVG) k = len - 1u - k;
-            r = (k & 1u) ? len - 1u - k / 2u : k / 2u;
-            break;
-        case AM_PINKY: r = len < 2u ? 0u : (k & 1u) ? len - 1u : k / 2u; break;
-        case AM_THUMB: r = len < 2u ? 0u : (k & 1u) ? 1u + k / 2u : 0u; break;
-        default: r = i % len; break;
-        }
-        rows[0] = r;
-        if (m == AM_CHORD)                           /* the first 4 held notes, an octave up each step */
-            for (n = 0; n < (cnt < 4u ? cnt : 4u); n++)
-                rows[n] = (i % oct) * cnt + n;
+        uint32_t gw, skip, col;
+        int32_t x = 30 + (int32_t)(i * 124u / 10u) + ((i & 1u) ? sw : 0), y;
+        s = phr_step(m - 1u, i);
+        if (!s)
+            continue;
+        used++;
+        r = s >> 4u;
+        gw = 2 + (s & 15u) * 10 / 15;
         skip = ((i * 2654435761u >> 25) & 127u) > (uint32_t)t->p[P_APROB];
-        for (j = 0; j < n; j++) {
-            int32_t y = base - (int32_t)rows[j] * pitch - th / 2;
-            uint16_t col = !m ? T_DIM : i % 4u == 0u ? T_TEXT : c;
-            if (ux.crypt) {                          /* (Skiff C4) CRYPT: a note a # (2x where there is room), a skipped one
-                                                      * a crossed skull */
-                if (skip)
-                    cr_skull(x - 1, y + th / 2 - 4, T_MID, T_SURF, 1);
-                else
-                    cr_ch(x - 1, base - (int32_t)rows[j] * pitch + (pitch >= 16 ? 7 : 4), pitch >= 16 ? &AF_V : &AF_S, '#',
-                          !m ? T_DIM : i % 4u == 0u ? T_TEXT : T_THEME);
-                continue;
-            }
+        col = i % 4u == 0u ? T_TEXT : c;
+        y = base - (int32_t)r * pitch - th / 2;
+        if (ux.crypt) {                              /* (Skiff C4) CRYPT: a note a #, a skipped one a crossed skull */
             if (skip)
-                cv_frame(x, y, gw, th, T_MID);
+                cr_skull(x - 1, y + th / 2 - 4, T_MID, T_SURF, 1);
             else
-                cv_rect(x, y, gw, th, col);
+                cr_ch(x - 1, y + (pitch >= 16 ? 7 : 4), pitch >= 16 ? &AF_V : &AF_S, '#',
+                      i % 4u == 0u ? T_TEXT : T_THEME);
+            continue;
         }
+        if (skip)
+            cv_frame(x, y, gw, th, T_MID);
+        else
+            cv_rect(x, y, gw, th, col);
     }
+    if (!used)
+        pg_text(30, 117, "EMPTY: REC TO RECORD", T_DIM);
 }

@@ -194,33 +194,23 @@ static int loads_and_song(void)
     undo_step(0);
     return bad;
 }
-static int repeat_mode(void)
-{
-    int bad = 0; ui_power_on(); track_t *t = &trk[0];
-    t->p[P_AMODE] = 6; t->p[P_AOCT] = 4; t->p[P_APROB] = 127;
-    arp_add(t, 72); arp_add(t, 60);
-    arp_tick(t, CTL);
-    bad += check("REPEAT retriggers the last played note without octave traversal", t->arp_note == 60);
-    t->arp_pos = 0xFFFFFFF; arp_tick(t, CTL);
-    bad += check("REPEAT remains on the same note on the next pulse", t->arp_note == 60);
-    arp_remove(t, 60); arp_remove(t, 72); arp_tick(t, CTL);
-    bad += check("REPEAT releases after the last held key is released", !t->nheld && !t->arp_note);
-    t->p[P_AHOLD] = 1; arp_add(t, 65); arp_remove(t, 65); t->arp_pos = 0xFFFFFFF; arp_tick(t, CTL);
-    bad += check("REPEAT supports ARP HOLD", t->nheld == 1u && t->arp_note == 65);
-    return bad;
-}
-
-/* 1.2 (Discussion #95): the ARP modes appended after REPEAT (seq.c AM_*), each over a 3- and a 4-note chord, OCT,
- * ORD PLAY, HOLD, REPEAT switched in and out, WALK's random steps the same from the same seed */
-static void arp_fresh(track_t *t, int32_t mode, int32_t oct, const uint8_t *notes, uint32_t n)
+/* (phrase-arp) the ARP plays only user-recorded phrases from the shared pool (phr.c): a step's byte is a signed
+ * 4-bit semitone offset from the phrase root (bits 7..4) and its gate (bits 3..0, 15 = the whole step); a step of 0
+ * is empty. MODE 1..8 picks the pool phrase, 0 OFF. REC armed with a phrase captures the keys into the pool. */
+static void phr_fresh(track_t *t, int32_t mode, int32_t oct, const uint8_t *notes, uint32_t n)
 {
     uint32_t i;
+    song.rec = song.playing = 0;                  /* playback, not the capture pass */
     if (t->arp_note)
         arp_off(t);
     t->nheld = 0; t->arp_phys = 0;
     t->p[P_AMODE] = (int16_t)mode; t->p[P_AOCT] = (int16_t)oct; t->p[P_APROB] = 127;
     for (i = 0; i < n; i++)
         arp_add(t, notes[i]);
+}
+static void phr_put(track_t *t, uint32_t s, int32_t off, uint32_t gate)   /* a step of the mode's phrase */
+{
+    phr_set((uint32_t)t->p[P_AMODE] - 1u, s, (uint8_t)((uint32_t)(off & 15) << 4 | (gate & 15u)));
 }
 static int arp_plays(track_t *t, const uint8_t *want, uint32_t n)   /* the next n steps play these notes */
 {
@@ -229,167 +219,123 @@ static int arp_plays(track_t *t, const uint8_t *want, uint32_t n)   /* the next 
     for (i = 0; i < n; i++) {
         t->arp_pos = 0xFFFFFFF;
         arp_tick(t, CTL);
-        ok &= t->arp_note == want[i] && !t->arp_ch[0];
+        ok &= t->arp_note == want[i];
         if (t->arp_note != want[i])
             printf("    step %u: %u, not %u\n", (unsigned)i, (unsigned)t->arp_note, (unsigned)want[i]);
     }
     return ok;
 }
-static int arp_new_modes(void)
+static int repeat_mode(void)                     /* (phrase-arp: the pool's basics; the name is kept for main) */
 {
-    static const uint8_t CEG[3] = {60, 64, 67}, CEGB[4] = {60, 64, 67, 71}, GCE[3] = {67, 60, 64};
-    static const uint8_t FIVE[5] = {60, 64, 67, 71, 74};
+    static const uint8_t CEG[3] = {60, 64, 67};
     int bad = 0, ok;
-    uint32_t i, k;
-    uint8_t a[32], b[32];
+    uint32_t i;
     track_t *t;
     ui_power_on();
     t = &trk[0];
-    ok = TP[P_AMODE].max == 14 && str_eq(TP[P_AMODE].names[6], "REPEAT") && str_eq(TP[P_AMODE].names[7], "DNUP") &&
-         str_eq(TP[P_AMODE].names[8], "UP+8") && str_eq(TP[P_AMODE].names[9], "CONV") &&
-         str_eq(TP[P_AMODE].names[10], "DIVG") && str_eq(TP[P_AMODE].names[11], "PINKY") &&
-         str_eq(TP[P_AMODE].names[12], "THUMB") && str_eq(TP[P_AMODE].names[13], "WALK") &&
-         str_eq(TP[P_AMODE].names[14], "CHORD");
-    for (i = 0; i <= 14u; i++)
+    phr_pool_clear();
+    ok = TP[P_AMODE].max == 8 && str_eq(TP[P_AMODE].names[0], "OFF") && str_eq(TP[P_AMODE].names[1], "PH1") &&
+         str_eq(TP[P_AMODE].names[8], "PH8");
+    for (i = 0; i <= 8u; i++)
         ok &= strlen(TP[P_AMODE].names[i]) <= 6u;
-    bad += check("ARP modes: OFF..REPEAT keep their numbers, DNUP UP+8 CONV DIVG PINKY THUMB WALK CHORD appended (<= 6 chars)", ok);
-    /* the modes before 1.2 play as they did */
-    arp_fresh(t, AM_UP, 1, CEG, 3);   ok = arp_plays(t, (const uint8_t[]){60, 64, 67, 60}, 4);
-    arp_fresh(t, AM_DN, 1, CEG, 3);   ok &= arp_plays(t, (const uint8_t[]){67, 64, 60, 67}, 4);
-    arp_fresh(t, AM_UPDN, 1, CEG, 3); ok &= arp_plays(t, (const uint8_t[]){60, 64, 67, 64, 60}, 5);
-    arp_fresh(t, AM_ORD, 1, CEG, 3);  ok &= arp_plays(t, (const uint8_t[]){60, 64, 67, 60}, 4);
-    bad += check("ARP UP, DN, UPDN, ORD as before", ok);
-    arp_fresh(t, AM_DNUP, 1, CEG, 3);  ok = arp_plays(t, (const uint8_t[]){67, 64, 60, 64, 67, 64}, 6);
-    arp_fresh(t, AM_DNUP, 1, CEGB, 4); ok &= arp_plays(t, (const uint8_t[]){71, 67, 64, 60, 64, 67, 71}, 7);
-    arp_fresh(t, AM_DNUP, 2, CEG, 3);  ok &= arp_plays(t, (const uint8_t[]){79, 76, 72, 67, 64, 60, 64, 67, 72, 76, 79}, 11);
-    bad += check("ARP DNUP: G E C E; B G E C E G for 4; across OCT 2", ok);
-    arp_fresh(t, AM_UP8, 1, CEG, 3);  ok = arp_plays(t, (const uint8_t[]){60, 64, 67, 72, 60}, 5);
-    arp_fresh(t, AM_UP8, 1, CEGB, 4); ok &= arp_plays(t, (const uint8_t[]){60, 64, 67, 71, 72, 60}, 6);
-    arp_fresh(t, AM_UP8, 2, CEG, 3);  ok &= arp_plays(t, (const uint8_t[]){60, 64, 67, 72, 76, 79, 84, 60}, 8);
-    t->p[P_AORDER] = 1;                               /* ORD PLAY: as played, G C E, then G an octave up */
-    arp_fresh(t, AM_UP8, 1, GCE, 3);  ok &= arp_plays(t, (const uint8_t[]){67, 60, 64, 79, 67}, 5);
+    bad += check("ARP MODE: OFF and the pool phrases PH1..PH8", ok);
+    t->p[P_AMODE] = 1;
+    phr_put(t, 0, 0, 15); phr_put(t, 1, 4, 10); phr_put(t, 2, 7, 5);   /* C E G, the rest empty */
+    phr_fresh(t, 1, 1, CEG, 3);
+    t->arp_pos = 0xFFFFFFF;
+    arp_tick(t, CTL);
+    ok = t->arp_note == 60 && t->arp_off == div_samples((uint32_t)t->p[P_ARATE]);   /* gate 15: the whole step */
+    t->arp_pos = 0xFFFFFFF;
+    arp_tick(t, CTL);
+    ok &= t->arp_note == 64 && t->arp_off == div_samples((uint32_t)t->p[P_ARATE]) * 10u / 15u;   /* gate 10 */
+    t->arp_pos = 0xFFFFFFF;
+    arp_tick(t, CTL);
+    ok &= t->arp_note == 67;
+    t->arp_pos = 0xFFFFFFF;
+    arp_tick(t, CTL);
+    ok &= t->arp_note == 60;                     /* .. and the loop starts over at the phrase's length */
+    bad += check("a phrase: C E G with their gates, then the loop from the top", ok);
+    phr_pool_clear();
+    for (i = 0; i < 16u; i++)
+        phr_put(t, i, 0, 15);                    /* the root alone, every step */
+    phr_fresh(t, 1, 2, CEG, 3);
+    ok = 1;
+    for (i = 0; i < 16u; i++) {
+        t->arp_pos = 0xFFFFFFF;
+        arp_tick(t, CTL);
+        ok &= t->arp_note == 60u;
+    }
+    t->arp_pos = 0xFFFFFFF; arp_tick(t, CTL);    /* the second pass: an octave up */
+    ok &= t->arp_note == 72u;
+    t->arp_pos = 0xFFFFFFF; arp_tick(t, CTL);    /* .. and through the pass (offset 0 stays the octave's root) */
+    ok &= t->arp_note == 72u;
+    for (i = 0; i < 14u; i++) {
+        t->arp_pos = 0xFFFFFFF;
+        arp_tick(t, CTL);
+    }
+    t->arp_pos = 0xFFFFFFF; arp_tick(t, CTL);    /* OCT 2: the third pass is at the root again */
+    ok &= t->arp_note == 60u;
+    bad += check("OCTAVE: the phrase at the root, an octave up each 16-step pass through OCT 2", ok);
+    phr_fresh(t, 1, 1, (const uint8_t[]){67, 60, 64}, 3);   /* held G C E, as played */
+    t->p[P_AORDER] = 1;
+    t->arp_pos = 0xFFFFFFF; arp_tick(t, CTL);
+    ok = t->arp_note == 67;                      /* PLAYED: the first held is the root */
     t->p[P_AORDER] = 0;
-    bad += check("ARP UP+8: C E G C'; C E G B C'; OCT 2 ends on C''; ORD PLAY: the first played an octave over the top", ok);
-    arp_fresh(t, AM_CONV, 1, CEG, 3);  ok = arp_plays(t, (const uint8_t[]){60, 67, 64, 60}, 4);
-    arp_fresh(t, AM_CONV, 1, CEGB, 4); ok &= arp_plays(t, (const uint8_t[]){60, 71, 64, 67, 60}, 5);
-    arp_fresh(t, AM_CONV, 2, CEG, 3);  ok &= arp_plays(t, (const uint8_t[]){60, 79, 64, 76, 67, 72, 60}, 7);
-    arp_fresh(t, AM_DIVG, 1, CEG, 3);  ok &= arp_plays(t, (const uint8_t[]){64, 67, 60, 64}, 4);
-    arp_fresh(t, AM_DIVG, 1, CEGB, 4); ok &= arp_plays(t, (const uint8_t[]){67, 64, 71, 60, 67}, 5);
-    bad += check("ARP CONV: C G E, C B E G (outside in), OCT 2; DIVG: E G C, G E B C (inside out)", ok);
-    arp_fresh(t, AM_PINKY, 1, CEG, 3);  ok = arp_plays(t, (const uint8_t[]){60, 67, 64, 67, 60}, 5);
-    arp_fresh(t, AM_PINKY, 1, CEGB, 4); ok &= arp_plays(t, (const uint8_t[]){60, 71, 64, 71, 67, 71, 60}, 7);
-    arp_fresh(t, AM_PINKY, 2, CEG, 3);  ok &= arp_plays(t, (const uint8_t[]){60, 79, 64, 79, 67, 79, 72, 79, 76, 79, 60}, 11);
-    arp_fresh(t, AM_THUMB, 1, CEG, 3);  ok &= arp_plays(t, (const uint8_t[]){60, 64, 60, 67, 60}, 5);
-    arp_fresh(t, AM_THUMB, 1, CEGB, 4); ok &= arp_plays(t, (const uint8_t[]){60, 64, 60, 67, 60, 71, 60}, 7);
-    arp_fresh(t, AM_THUMB, 1, CEG, 1);  ok &= arp_plays(t, (const uint8_t[]){60, 60, 60}, 3);   /* (one note) */
-    bad += check("ARP PINKY: C G E G, C B E B G B, the OCT 2 top; THUMB: C E C G, C E C G C B; one note", ok);
-    /* CHORD: the held notes together, an octave up each step through OCT; the first 4 of more */
-    arp_fresh(t, AM_CHORD, 2, CEG, 3);
-    ok = 1;
-    for (i = 0; i < 4u; i++) {
-        uint32_t o = 12u * (i & 1u);
-        t->arp_pos = 0xFFFFFFF;
-        arp_tick(t, CTL);
-        ok &= t->arp_note == 60u + o && t->arp_ch[0] == 64u + o && t->arp_ch[1] == 67u + o && !t->arp_ch[2];
-    }
-    arp_fresh(t, AM_CHORD, 1, FIVE, 5);
-    t->arp_pos = 0xFFFFFFF;
-    arp_tick(t, CTL);
-    ok &= t->arp_note == 60u && t->arp_ch[0] == 64u && t->arp_ch[1] == 67u && t->arp_ch[2] == 71u;
-    t->arp_off = 1;                                    /* its gate ends: all four end */
-    arp_tick(t, 2);
-    ok &= !t->arp_note && !t->arp_ch[0] && !t->arp_ch[1] && !t->arp_ch[2];
-    arp_fresh(t, AM_CHORD, 1, CEG, 3);
-    t->arp_pos = 0xFFFFFFF;
-    arp_tick(t, CTL);
-    arp_remove(t, 60); arp_remove(t, 64); arp_remove(t, 67);
-    arp_tick(t, CTL);                                  /* let go: the chord ends */
-    ok &= !t->nheld && !t->arp_note && !t->arp_ch[0] && !t->arp_ch[1];
-    bad += check("ARP CHORD: C E G together, then an octave up (OCT 2); 5 held: the first 4; the gate and a release end them all", ok);
-    /* WALK: from the bottom, one place up or down each step, inside the list; the same from the same seed */
-    ok = 1;
-    for (k = 0; k < 2u; k++) {
-        rng_state = 0x2468ACEu;
-        arp_fresh(t, AM_WALK, 2, CEGB, 4);             /* the list: C E G B C' E' G' B' */
-        for (i = 0; i < 32u; i++) {
-            t->arp_pos = 0xFFFFFFF;
-            arp_tick(t, CTL);
-            (k ? b : a)[i] = t->arp_note;
-        }
-    }
-    ok &= a[0] == 60u && !memcmp(a, b, sizeof a);
-    {
-        static const uint8_t L[8] = {60, 64, 67, 71, 72, 76, 79, 83};
-        uint32_t pos[32], up = 0, dn = 0;
-        for (i = 0; i < 32u; i++) {
-            for (pos[i] = 0; pos[i] < 8u && L[pos[i]] != a[i]; pos[i]++)
-                ;
-            ok &= pos[i] < 8u;
-            if (i) {
-                ok &= pos[i] == pos[i - 1u] + 1u || pos[i] + 1u == pos[i - 1u];
-                up += pos[i] > pos[i - 1u];
-                dn += pos[i] < pos[i - 1u];
-            }
-        }
-        ok &= up > 4u && dn > 4u;
-    }
-    rng_state = 0x13579BDu;
-    arp_fresh(t, AM_WALK, 2, CEGB, 4);
-    for (i = 0; i < 32u; i++) {
-        t->arp_pos = 0xFFFFFFF;
-        arp_tick(t, CTL);
-        b[i] = t->arp_note;
-    }
-    ok &= memcmp(a, b, sizeof a) != 0;
-    arp_remove(t, 71); arp_remove(t, 67);              /* notes let go: back inside the shorter list */
-    for (i = 0; i < 8u; i++) {
-        t->arp_pos = 0xFFFFFFF;
-        arp_tick(t, CTL);
-        ok &= t->arp_note == 60 || t->arp_note == 64 || t->arp_note == 72 || t->arp_note == 76;
-    }
-    bad += check("ARP WALK: from the bottom, a step up or down each time inside the list; the same seed the same walk", ok);
-    /* HOLD: the latched chord keeps its mode; a new chord replaces it */
+    t->arp_pos = 0xFFFFFFF; arp_tick(t, CTL);
+    ok &= t->arp_note == 60;                     /* NOTE: the lowest */
+    bad += check("ORDER: the phrase root is the first played or the lowest held note", ok);
     t->p[P_AHOLD] = 1;
-    arp_fresh(t, AM_PINKY, 1, CEG, 3);
+    phr_fresh(t, 1, 1, CEG, 3);
     arp_remove(t, 60); arp_remove(t, 64); arp_remove(t, 67);
-    ok = t->nheld == 3u && arp_plays(t, (const uint8_t[]){60, 67, 64, 67}, 4);
-    arp_add(t, 62); arp_add(t, 65); arp_add(t, 69);   /* D F A: replaces it, from the top of the pattern */
-    ok &= t->nheld == 3u && arp_plays(t, (const uint8_t[]){62, 69, 65, 69}, 4);
+    ok = t->nheld == 3u && arp_plays(t, (const uint8_t[]){60, 60}, 2);
+    arp_add(t, 62); arp_add(t, 65); arp_add(t, 69);   /* D F A replaces it */
+    ok &= t->nheld == 3u && arp_plays(t, (const uint8_t[]){62, 62}, 2);
     arp_remove(t, 62); arp_remove(t, 65); arp_remove(t, 69);
     t->p[P_AHOLD] = 0;
-    bad += check("ARP HOLD: PINKY keeps playing the latched C E G; D F A replaces it", ok);
-    /* REPEAT in and out: the last played note alone, then the new mode over the whole chord again */
-    arp_fresh(t, AM_REPEAT, 2, CEG, 3);
-    ok = arp_plays(t, (const uint8_t[]){67, 67}, 2);
-    t->p[P_AMODE] = AM_THUMB;                          /* (its step count goes on: step 2 of C E C G C' ..) */
-    ok &= arp_plays(t, (const uint8_t[]){60, 67, 60, 72}, 4);
-    t->p[P_AMODE] = AM_REPEAT;
-    ok &= arp_plays(t, (const uint8_t[]){67, 67}, 2);
-    t->p[P_AMODE] = AM_CHORD;
-    t->arp_pos = 0xFFFFFFF;
-    arp_tick(t, CTL);
-    ok &= t->arp_ch[0] && t->arp_ch[1];
-    t->p[P_AMODE] = AM_REPEAT;
-    ok &= arp_plays(t, (const uint8_t[]){67}, 1);      /* (CHORD's other notes ended) */
-    bad += check("ARP REPEAT switched to THUMB and back, CHORD to REPEAT: each plays its own", ok);
-    /* recording: CHORD writes its notes into one step, as the keys' chords (POLY) */
-    sel_set(0); song.rec = 1;
-    t->p[P_VOICE] = V_POLY;
-    for (i = 0; i < NSTEP; i++)
-        t->step[i] = (step_t){0};
-    seq_start();
-    seq_tick(t, CTL);
-    arp_fresh(t, AM_CHORD, 1, CEG, 3);
-    t->arp_pos = 0xFFFFFFF;
-    arp_tick(t, CTL);
-    for (i = 0, k = 0; i < NSTEP; i++)
-        k += t->step[i].n == 3u && t->step[i].note[0] == 60 && t->step[i].note[1] == 64 && t->step[i].note[2] == 67;
-    seq_stop();
-    song.rec = 0;
-    bad += check("ARP CHORD recorded: C E G into one step", k == 1u);
-    arp_fresh(t, AM_OFF, 1, CEG, 0);
+    bad += check("ARP HOLD: the latched chord keeps the phrase; a new chord replaces it", ok);
     return bad;
 }
+static int arp_new_modes(void)                   /* (phrase-arp: the capture pass and the project clamp) */
+{
+    int bad = 0, ok = 1;
+    track_t *t;
+    project_t before, after; project_store_t packed;
+    ui_power_on();
+    t = &trk[0];
+    phr_pool_clear();
+    cap_root[0] = cap_note[0] = 0xFFu; cap_seen[0] = 0; cap_was[0] = 0; cap_tm[0] = 0;
+    t->p[P_AMODE] = 2;                           /* PH2: the capture pass writes it */
+    t->p[P_AORDER] = 0;
+    song.rec = 1; song.playing = 1;
+    input_on(t, 60, 100);                        /* the first note: the root, step 0 */
+    ok = cap_root[0] == 60u && phr_step(1u, 0u) == 0u;    /* the gate comes on release */
+    t->arp_pos = 0xFFFFFFF;
+    arp_tick(t, CTL);                            /* step 0 begins */
+    t->arp_pos = 0xFFFFFFF;
+    arp_tick(t, CTL);                            /* step 1 begins */
+    input_on(t, 64, 100);                        /* E: +4, step 1; the held C gets a full gate (legato) */
+    ok &= (phr_step(1u, 0u) & 15u) == 15u && phr_step(1u, 1u) == 0x40u;
+    input_on(t, 67, 100);                        /* G: the same step, the first one wins */
+    ok &= (phr_step(1u, 1u) & 0xF0u) == 0x40u;
+    input_off(t, 60);                            /* (its gate was the legato's) */
+    arp_tick(t, CTL);
+    input_off(t, 64);                            /* the release writes the gate */
+    ok &= (phr_step(1u, 1u) & 15u) != 0u && (phr_step(1u, 1u) & 15u) <= 15u;
+    input_off(t, 67);
+    song.rec = 0; song.playing = 0;
+    arp_tick(t, CTL);                            /* the pass ended: reset + persist */
+    ok &= cap_root[0] == 0xFFu && cap_note[0] == 0xFFu && cap_seen[0] == 0;
+    bad += check("capture: the first note the root, each next its offset on the clock's step, one a step, gates", ok);
+    t->p[P_AMODE] = 14;                          /* a project saved by upstream Skiff: the old CHORD shape */
+    project_capture(&before);
+    proj_power_on(&before, PROJ_NT); before.sum = proj_sum(&before);
+    ok = proj_pack(&packed, &before) && proj_import(&after, &packed, sizeof packed);
+    proj_bound(&after);                          /* (the load path clamps: proj_fetch, autosave_boot) */
+    ok &= after.t[0].p[P_AMODE] == 8u;
+    bad += check("a project's old shape (14) loads clamped to PH8, not refused", ok);
+    return bad;
+}
+
 /* ------------------------------------------------ 1.1 parameter locks --- */
 /* the transport on to the next step of t (its seq_idx changes) */
 static void lock_next(track_t *t)

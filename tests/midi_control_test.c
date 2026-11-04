@@ -162,6 +162,8 @@ static void arp_latch(uint32_t mode)
 {
     midi_test_reset(); song.g[G_CLOCK] = (int16_t)mode; events_block(CTL);
     trk[0].p[P_AMODE] = 1; trk[0].p[P_AHOLD] = 1; trk[0].p[P_ARATE] = 2; trk[0].p[P_AGATE] = 120; trk[0].p[P_AOCT] = 2;
+    phr_pool_clear();                              /* (phrase-arp) PH1: the root alone; OCT 2 passes it an octave up */
+    phr_set(0, 0, 0x0F);
     events_block(CTL);
 }
 static uint32_t arp_ext_run(uint32_t ms)       /* Start, tap 60 (latched), clocks until the arp plays 72 */

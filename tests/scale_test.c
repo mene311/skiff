@@ -86,6 +86,9 @@ static void key_events_test(void)
     uint32_t before;
     memset(trk, 0, sizeof trk);
     memset(&song, 0, sizeof song); sel_set(0);
+    phr_pool_clear();                              /* (phrase-arp) a fresh, empty pool */
+    cap_root[0] = cap_note[0] = 0xFFu;             /* .. and no capture pass yet */
+    cap_seen[0] = 0; cap_was[0] = 0; cap_tm[0] = 0;
     host_tracks_init();
     kb_prev = 0;
     usb.config = 1;
@@ -93,7 +96,7 @@ static void key_events_test(void)
     host_mset[32u * 15u + 17u] = NO_KEYS;
     t->p[P_QUANT] = 2;
     t->p[P_SCALE] = 2;                      /* C minor: E key plays Eb */
-    t->p[P_AMODE] = 1;
+    t->p[P_AMODE] = 1;                      /* (phrase-arp) PH1: REC captures the keys into the phrase */
     song.playing = song.rec = 1;
     fm1_in.notes = 1u << 8;                /* C# is silent */
     keyboard_block();
@@ -103,12 +106,11 @@ static void key_events_test(void)
     keyboard_block();
     assert(mo_w == 0);
     t->p[P_QUANT] = 2;
-    fm1_in.notes = (1u << 11) | (1u << 10); /* E and D#: only Eb sounds/records */
+    fm1_in.notes = (1u << 11) | (1u << 10); /* E and D#: only Eb plays and is captured */
     keyboard_block();
-    assert(t->arp_phys == 1 && t->nheld == 1 && t->held[0] == 63);
-    assert(t->step[0].n == 0);             /* ARP on: the arp's notes are recorded, not the keys */
-    arp_tick(t, 1);
-    assert(t->step[0].n == 1 && t->step[0].note[0] == 63);
+    assert(t->arp_phys == 0 && t->nheld == 0);
+    assert(t->step[0].n == 0);             /* the capture never records sequencer steps */
+    assert(cap_root[0] == 63 && phr_step(0, 0) == 0);   /* the root; the gate comes on release */
     assert(mo_w == 1 && ((midi_out_q[0] >> 16) & 127u) == 63);
     t->p[P_SCALE] = 9;
     t->p[P_ROOT] = 6;
@@ -118,6 +120,7 @@ static void key_events_test(void)
     fm1_in.notes = 0;
     keyboard_block();
     assert(t->arp_phys == 0 && t->nheld == 0);
+    assert((phr_step(0, 0) & 15u) != 0);      /* the release wrote the gate */
     assert(mo_w == 2 && ((midi_out_q[1] >> 16) & 127u) == 63);
     assert(((midi_out_q[1] >> 8) & 255u) == 0x80u);
     sel_set(0);
@@ -125,12 +128,12 @@ static void key_events_test(void)
     fm1_in.notes = 1u << 8;                /* held black key must release after enabling mode */
     keyboard_block();
     before = mo_w;
-    assert(t->arp_phys == 1);
+    assert(t->arp_phys == 0);
     t->p[P_QUANT] = 2;
     fm1_in.notes = 0;
     keyboard_block();
     assert(t->arp_phys == 0 && t->nheld == 0 && mo_w == before + 1);
-    puts("scales: silent keys, arp, live recording, MIDI out and held-note changes ok");
+    puts("scales: silent keys, phrase capture, live recording, MIDI out and held-note changes ok");
 }
 
 /* the voices of t holding a note (gate on), and whether note n is one of them */
@@ -278,10 +281,17 @@ static uint32_t arp_run(track_t *t, uint32_t steps)  /* the notes of `steps` arp
     }
     return steps;
 }
-static int arp_is(track_t *t, uint32_t a, uint32_t b)   /* UP over two notes: a b a b */
+static void arp_phrase(track_t *t, int32_t off)      /* (phrase-arp) PH1: the root, then root + off, full gates */
 {
-    arp_run(t, 4);
-    return arp_seen[0] == a && arp_seen[1] == b && arp_seen[2] == a && arp_seen[3] == b;
+    phr_clear(0);
+    phr_set(0, 0, 0x0F);
+    phr_set(0, 1, (uint8_t)(((uint32_t)(off & 15)) << 4 | 15));
+}
+static int arp_is(track_t *t, uint32_t a, uint32_t b)   /* (phrase-arp) the root, then b: the phrase's offset b - a */
+{
+    arp_phrase(t, (int32_t)b - (int32_t)a);
+    arp_run(t, 2);
+    return arp_seen[0] == a && arp_seen[1] == b;
 }
 static void arp_reset(track_t *t)
 {
@@ -290,10 +300,11 @@ static void arp_reset(track_t *t)
     host_tracks_init();
     kb_prev = 0;
     fm1_in.notes = 0;
+    phr_pool_clear();                              /* (phrase-arp) a fresh, empty pool */
     host_preset(t, 0, 0);                          /* ANALOG, POLY */
     t->engine = t->eng_req = 0;
     t->p[P_VOICE] = V_POLY;
-    t->p[P_AMODE] = 1;                             /* UP */
+    t->p[P_AMODE] = 1;                             /* (phrase-arp) PH1 */
     t->p[P_AOCT] = 1;
     t->p[P_SCALE] = 2;                             /* C minor */
     t->p[P_ROOT] = 0;
@@ -349,7 +360,7 @@ static void arp_follow_test(void)
     keyboard_block();
     assert(t->nheld == 1);
     arp_run(t, 2);
-    assert(arp_seen[0] == 57 && arp_seen[1] == 57);
+    assert(arp_seen[0] == 57 && arp_seen[1] == 61);   /* (phrase-arp) the phrase's shape, not the held list's */
     fm1_in.notes = 0;
     keyboard_block();
     arp_run(t, 2);
@@ -378,11 +389,12 @@ static void arp_follow_test(void)
     fm1_in.notes = 0;
     keyboard_block();
     assert(t->nheld == 3);
-    arp_run(t, 3);
-    assert(arp_seen[0] == 60 && arp_seen[1] == 67 && arp_seen[2] == 72);
+    arp_phrase(t, 7);                              /* (phrase-arp) the root and its fifth */
+    arp_run(t, 2);
+    assert(arp_seen[0] == 60 && arp_seen[1] == 67);
     t->p[P_TRANS] = 2;
-    arp_run(t, 3);
-    assert(arp_seen[0] == 62 && arp_seen[1] == 69 && arp_seen[2] == 74);
+    arp_run(t, 2);
+    assert(arp_seen[0] == 62 && arp_seen[1] == 69);
     t->p[P_CHRD] = 0;
 
     /* QNT WHITE after the keys: a black key latched is silent now (left out); all of them: the arp rests */
@@ -394,10 +406,9 @@ static void arp_follow_test(void)
     fm1_in.notes = 0;
     keyboard_block();
     assert(arp_is(t, 60, 61));
-    t->p[P_QUANT] = QN_WHITE;                      /* C4 is the root, C#4 silent */
-    arp_run(t, 4);
-    for (i = 0; i < 4u; i++)
-        assert(arp_seen[i] == 60);
+    t->p[P_QUANT] = QN_WHITE;                      /* C4 is the root, C#4 silent: the phrase plays on from it */
+    arp_run(t, 2);
+    assert(arp_seen[0] == 60 && arp_seen[1] == 61);
     t->p[P_QUANT] = QN_OFF;
     fm1_in.notes = 1u << 8;                        /* a new chord: C#4 alone */
     keyboard_block();

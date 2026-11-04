@@ -207,13 +207,13 @@ static int keys(void)
     bad += check("LEGATO: the root alone (E)", ngated(t) == 1u && gate_note(t, 64));
     key_up(K_E4);
     t->p[P_VOICE] = V_MONO;                                        /* ((2.0.3) MONO, the ARP on: the chord */
-    t->p[P_AMODE] = AM_UP;                                         /* whole into it, a note at a time) */
+    t->p[P_AMODE] = 1;                                             /* (phrase-arp: PH1) whole into it */
     key_down(K_D4);
     bad += check("MONO with the ARP on: the whole chord (D F A) into the arp, nothing started by the key",
                  t->nheld == 3u && t->held[0] == 62 && t->held[1] == 65 && t->held[2] == 69 && ngated(t) <= 1u);
     key_up(K_D4);
     bad += check("  released: the arp's notes gone", !t->nheld);
-    t->p[P_AMODE] = AM_OFF;
+    t->p[P_AMODE] = 0;
     t->p[P_VOICE] = V_POLY;
     t->p[P_QUANT] = 2;                                             /* WHITE in A minor: D4 is the 4th degree */
     t->p[P_SCALE] = 2; t->p[P_ROOT] = 9;

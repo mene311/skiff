@@ -27,7 +27,8 @@
  * (up_fm6.c upf_boot); the first write of the new object goes to the sector that does not hold the bank's newest
  * copy (st_save_to), so a power cut never loses both. */
 enum { OBJ_SETTINGS, OBJ_PROJECT0, OBJ_UPRESET0 = OBJ_PROJECT0 + 4, OBJ_FM6BANK = OBJ_UPRESET0 + 2, OBJ_UPFM6,
-       OBJ_AUTOSAVE, OBJ_COUNT };
+       OBJ_AUTOSAVE, OBJ_PHRASES /* (phrase-arp: phr.c, the shared phrase pool's A/B pair, the pattern bank's last two) */,
+       OBJ_COUNT };
 
 typedef struct {
     uint32_t magic;
@@ -66,14 +67,16 @@ static uint32_t st_crc32(const void *p, uint32_t n)   /* zlib CRC-32, 4 bits per
 #define ST_SMK_PAIRS 9u
 #define ST_SMK_SECTORS (2u * ST_SMK_PAIRS)
 #define ST_OWNER_OFF (ST_SMK_BASE + ST_SMK_SECTORS * ST_SECTOR)
-_Static_assert(OBJ_COUNT == 10u && OBJ_UPFM6 == OBJ_FM6BANK + 1u, "SMK store: a new object needs a place");
+_Static_assert(OBJ_COUNT == 11u && OBJ_UPFM6 == OBJ_FM6BANK + 1u, "SMK store: a new object needs a place");
 _Static_assert(ST_OWNER_OFF == 0xAF000u && ST_OWNER_OFF + ST_SECTOR <= FL_DATA_HI, "SMK store: past FL_DATA");
 static const uint8_t ST_SMK_ORDER[OBJ_COUNT] = {
     [OBJ_PROJECT0] = 0, [OBJ_PROJECT0 + 1] = 1, [OBJ_PROJECT0 + 2] = 2, [OBJ_PROJECT0 + 3] = 3,
     [OBJ_UPRESET0] = 4, [OBJ_UPRESET0 + 1] = 5, [OBJ_AUTOSAVE] = 6, [OBJ_FM6BANK] = 7, [OBJ_UPFM6] = 7,
-    [OBJ_SETTINGS] = 8};
+    [OBJ_SETTINGS] = 8, [OBJ_PHRASES] = 9 /* unused: its pair is FL_PHRASE, outside the store window */};
 static uint32_t st_sector(uint32_t obj, uint32_t copy)  /* flash offset of copy A (0) / B (1) */
 {
+    if (obj == OBJ_PHRASES)
+        return FL_PHRASE_LO + (copy & 1u) * ST_SECTOR;   /* (phrase-arp) the pool's own pair, in USRFLASH */
     return ST_SMK_BASE + (ST_SMK_ORDER[obj % OBJ_COUNT] * 2u + (copy & 1u)) * ST_SECTOR;
 }
 #else
@@ -85,6 +88,8 @@ static uint32_t st_sector(uint32_t obj, uint32_t copy)  /* flash offset of copy 
         return copy ? 0xFE000u : 0x9F000u;
     if (obj == OBJ_AUTOSAVE)
         return 0xE5000u + copy * ST_SECTOR;
+    if (obj == OBJ_PHRASES)
+        return 0xFA000u + copy * ST_SECTOR;              /* (phrase-arp) the pool's pair, the bank's last two */
     if (obj >= OBJ_UPRESET0)
         return 0xDC000u + (obj - OBJ_UPRESET0) * 2u * ST_SECTOR + copy * ST_SECTOR;
     return 0x97000u + (obj - OBJ_PROJECT0) * 2u * ST_SECTOR + copy * ST_SECTOR;
@@ -196,9 +201,10 @@ static int st_save(uint32_t obj, const void *src, uint32_t len) { return st_save
 /* (SMK-37 Pro, after genkigenki's SMK-37 layer) The store's owner. The store window is the stock firmware's VM, so
  * after an install it may hold the stock firmware's (or another port's) data, which Skiff must never parse as its own.
  * The sector after the objects (ST_OWNER_OFF) holds the tag "SMK37DATA" + the data family (SMK_DATA_FAMILY, zero
- * padded to 16 B). Tagged: load as ever. Anything else (another family, or none): erase the nine pairs and the pattern
- * pool's sectors that hold one of its chunks (an "SKB1" record, bank.c BK_MAGIC: a stale chunk would come back as the
- * pool's newest copy), then write the tag. Sectors of the pool with anything else in them (the stock mapping, another
+ * padded to 16 B). Tagged: load as ever. Anything else (another family, or none): erase the nine pairs, the pattern
+ * pool's sectors that hold one of its chunks (an "SKB1" record, bank.c BK_MAGIC) and the phrase pool's pair holding a
+ * stale phrase record ("FELU" of OBJ_PHRASES, phr.c): a stale copy would come back as the pool's newest. Then write the
+ * tag. Sectors of the pool with anything else in them (the stock mapping, another
  * firmware's sample) are left for the pool's own erase before its first write, so an intact stock mapping stays until
  * then. The user sample (FL_SLOT) checks itself (eng_sample.c). Calibration, pairing and key_mac lie outside every
  * window: never touched. FELUCCA_DATA_UNTAGGED_OK 1 would keep a store with an erased tag (0: the SMK build never
@@ -276,11 +282,17 @@ static void st_owner_check(void)
     if (ours)
         return;
     if (!erased || !FELUCCA_DATA_UNTAGGED_OK) {     /* not ours (or untagged data): clear it */
+        uint8_t ph[6];
         for (s = 0; s < ST_SMK_SECTORS; s++)
             st_erase(ST_SMK_BASE + s * ST_SECTOR);
         for (s = FL_BANK_LO; s < FL_BANK_HI; s += ST_SECTOR)
             if (!st_read(s, m, 4) && (m[0] | m[1] << 8 | m[2] << 16 | (uint32_t)m[3] << 24) == 0x31424B53u)
                 st_erase(s);                    /* ("SKB1": a pattern pool chunk, bank.c BK_MAGIC) */
+        for (s = FL_PHRASE_LO; s < FL_PHRASE_HI; s += ST_SECTOR)
+            if (!st_read(s, ph, 6) && ((uint32_t)ph[0] | (uint32_t)ph[1] << 8 | (uint32_t)ph[2] << 16 |
+                    (uint32_t)ph[3] << 24) == 0x554C4546u && ph[4] == (uint8_t)OBJ_PHRASES)
+                st_erase(s);                    /* (phrase-arp: a stale phrase pool record, phr.c / OBJ_PHRASES; the
+                                                 * type's low byte only: a torn header leaves its high byte set) */
         st_owner_cleared = 1;
     }
     st_erase(ST_OWNER_OFF);

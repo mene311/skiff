@@ -67,13 +67,19 @@ int main(void)
     for (o = 0; o < OBJ_COUNT; o++)
         for (c = 0; c < 2u; c++) {
             uint32_t a = st_sector(o, c), i = a >> 12, mine = o == OBJ_UPFM6 ? 1u + OBJ_FM6BANK : 1u + o;
+            if (o == OBJ_PHRASES) {                  /* (phrase-arp) the pool's pair in USRFLASH, after the bank */
+                ok &= a == FL_BANK_HI + c * 0x1000u && FL_IN(a, 0x1000u, FL_SMP_LO, FL_SMP_HI) &&
+                      FL_GUARD(a, 0x1000u) && !owner[i];
+                owner[i] = 103;
+                continue;
+            }
             ok &= a % 0x1000u == 0u && FL_IN(a, 0x1000u, FL_DATA_LO, ST_OWNER_OFF) && FL_GUARD(a, 0x1000u);
             ok &= !owner[i] || owner[i] == mine;      /* (the retired FM6 bank and OBJ_UPFM6 share a pair, as on the FM-1) */
             owner[i] = (uint8_t)mine;
         }
     for (o = 0; o < OBJ_COUNT; o++)                /* A and B apart */
         ok &= st_sector(o, 0) != st_sector(o, 1);
-    check("storage.c: every OBJ_* (A and B) in FL_DATA below the owner tag, no two objects in one sector", ok);
+    check("storage.c: every OBJ_* (A and B) in FL_DATA below the owner tag, the phrase pair after the bank, no two in one", ok);
     ok = !owner[ST_OWNER_OFF >> 12] && FL_GUARD(ST_OWNER_OFF, 0x1000u) && ST_OWNER_OFF == 0xAF000u;
     owner[ST_OWNER_OFF >> 12] = 100;
     check("the owner tag 0xAF000: in FL_DATA, its own sector", ok);
@@ -81,8 +87,10 @@ int main(void)
         ok &= !owner[s >> 12] && FL_GUARD(s, 0x1000u) && FL_IN(s, 0x1000u, FL_SMP_LO, FL_SMP_HI);
         owner[s >> 12] = 101;
     }
-    check("the pattern pool: 20 sectors 0xD6000-0xE9FFF in USRFLASH, nobody else's",
-          ok && FL_BANK_LO == 0xD6000u && FL_BANK_HI - FL_BANK_LO == 20u * 0x1000u);
+    check("the pattern pool: 18 sectors 0xD6000-0xE7FFF in USRFLASH, nobody else's",
+          ok && FL_BANK_LO == 0xD6000u && FL_BANK_HI - FL_BANK_LO == 18u * 0x1000u);
+    check("the phrase pool's pair: the bank's last two sectors 0xE8000 / 0xE9000",
+          FL_PHRASE_LO == 0xE8000u && FL_PHRASE_HI - FL_PHRASE_LO == 2u * 0x1000u);
     for (ok = 1, s = FL_SLOT_LO; s < FL_SLOT_HI; s += 0x1000u) {
         ok &= !owner[s >> 12] && FL_GUARD(s, 0x1000u) && FL_IN(s, 0x1000u, FL_SMP_LO, FL_SMP_HI);
         owner[s >> 12] = 102;

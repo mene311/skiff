@@ -19,10 +19,11 @@ static int st_read(uint32_t off, void *dst, uint32_t n) { memcpy(dst, nor + off,
 static int st_erase(uint32_t off)
 {
     if ((off & 0xFFFu) || !(FL_IN(off, 0x1000u, 0x9D000u, 0xAF000u) || off == 0xAF000u || off == 0xEA000u ||
-                            FL_IN(off, 0x1000u, FL_BANK_LO, FL_BANK_HI)))
+                            FL_IN(off, 0x1000u, FL_BANK_LO, FL_BANK_HI) ||
+                            FL_IN(off, 0x1000u, FL_PHRASE_LO, FL_PHRASE_HI)))
         bad_write++;
     tag_erases += off == 0xEA000u;
-    pool_erases += FL_IN(off, 0x1000u, FL_BANK_LO, FL_BANK_HI);
+    pool_erases += FL_IN(off, 0x1000u, FL_BANK_LO, FL_BANK_HI) || FL_IN(off, 0x1000u, FL_PHRASE_LO, FL_PHRASE_HI);
     memset(nor + off, 0xFF, 0x1000);
     return 0;
 }
@@ -42,6 +43,13 @@ static int bad;
 static void check(const char *what, int ok) { printf("smk owner: %-84s %s\n", what, ok ? "ok" : "FAIL"); bad += !ok; }
 
 static void chunk(uint32_t off) { memcpy(nor + off, "SKB1", 4); memset(nor + off + 4, 0x55, 0x100); }
+static void phr_rec(uint32_t off)              /* (phrase-arp) a stale phrase pool record: "FELU" + OBJ_PHRASES */
+{
+    memcpy(nor + off, "FELU", 4);
+    nor[off + 4] = (uint8_t)OBJ_PHRASES;
+    nor[off + 5] = 0;                            /* (the commit record's slot) */
+    memset(nor + off + 32, 0x55, 0x100);
+}
 static void fill(void)
 {
     memset(nor, 0xFF, sizeof nor);
@@ -50,7 +58,8 @@ static void fill(void)
     memset(nor + 0xC1000, 0x33, 0x1000);           /* USRTRIM: never touched */
     memset(nor + 0xC2000, 0x44, 0x1000);           /* the user sample */
     chunk(0xD6000);                                /* two pool chunks */
-    chunk(0xE9000);
+    chunk(0xD7000);
+    phr_rec(0xE9000);                              /* a stale phrase pool record */
     memset(nor + 0xDA000, 0x66, 0x1000);           /* a pool sector with something else in it */
 }
 static int store_erased(void)
@@ -59,7 +68,8 @@ static int store_erased(void)
     for (i = 0x9D000; i < 0xAF000; i++) if (nor[i] != 0xFF) return 0;
     return 1;
 }
-static int pool_chunks_erased(void) { return nor[0xD6000] == 0xFF && nor[0xE9000] == 0xFF && nor[0xDA000] == 0x66; }
+static int pool_chunks_erased(void) { return nor[0xD6000] == 0xFF && nor[0xD7000] == 0xFF && nor[0xE9000] == 0xFF &&
+                                              nor[0xDA000] == 0x66; }
 static int others_kept(void)
 {
     return nor[0xC1000] == 0x33 && nor[0xC1FFF] == 0x33 && nor[0xC2000] == 0x44 && nor[0xB0000] == 0x22;

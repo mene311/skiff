@@ -180,7 +180,7 @@ static int layout(void)
         ok &= s >= FL_BANK_LO && s + 0x1000u <= FL_BANK_HI && FL_GUARD(s, 0x1000u) &&
               (s >= SMP_USER_BASE + SMP_USER_FLASH_SLOTS * SMP_USER_SIZE || s + 0x1000u <= SMP_USER_BASE);
 #else
-        ok &= (s >= 0xE7000u && s + 0x1000u <= 0xE9000u) || (s >= 0xEA000u && s + 0x1000u <= 0xFC000u);
+        ok &= (s >= 0xE7000u && s + 0x1000u <= 0xE9000u) || (s >= 0xEA000u && s + 0x1000u <= 0xFA000u);
 #endif
         for (o = 0; o < OBJ_COUNT; o++)           /* apart from every storage.c object's sectors */
             for (c = 0; c < 2u; c++)
@@ -189,10 +189,10 @@ static int layout(void)
         for (o = 0; o < i; o++)
             ok &= bk_sector(o) != s;
     }
-    bad += check(BOARD_SMK37 ? "20 sectors (SMK-37 Pro): USRFLASH after the user slot, nor any other object's" :
-                 "20 sectors: the VM area's last two, the package's USR region; not BTIF, nor any other object's", ok);
-    bad += check("a pattern 888 bytes (steps, NUDGE, timing, 64 motion records), 4 a sector, 16 chunks + 4 spare",
-                 BK_REC == 888u && BK_LEN <= 3840u && BK_CHUNKS == 16u && BK_NSECT == 20u);
+    bad += check(BOARD_SMK37 ? "18 sectors (SMK-37 Pro): USRFLASH after the user slot, nor any other object's" :
+                 "18 sectors: the VM area's last two, the package's USR region; not BTIF, nor any other object's", ok);
+    bad += check("a pattern 888 bytes (steps, NUDGE, timing, 64 motion records), 4 a sector, 16 chunks + 2 spare",
+                 BK_REC == 888u && BK_LEN <= 3840u && BK_CHUNKS == 16u && BK_NSECT == 18u);
     return bad;
 }
 
@@ -545,8 +545,8 @@ static int wear_and_wrap(void)
     detach(3);
     ok &= ent_go(3, 9) == 0;
     snap(&b, 3);
-    bad += check("a full bank, 40 saves of one entry: round the spare sectors (each erased about 10 times), the last "
-                 "kept", ok && same(&a, &b) && most <= 11u && pool_used(0) && pool_used(44) && ent_pat(3, 9) == 1u);
+    bad += check("a full bank, 40 saves of one entry: round the two spare sectors (each erased about 20 times), the "
+                 "last kept", ok && same(&a, &b) && most <= 23u && pool_used(0) && pool_used(44) && ent_pat(3, 9) == 1u);
     fresh();
     bk.top = 0xFFFFFFF0u;                         /* the sequence about to wrap */
     for (i = 0; i < 30u; i++) {

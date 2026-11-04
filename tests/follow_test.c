@@ -267,7 +267,10 @@ static int live(void)
     run_to(IN(2));                                      /* (G) */
     midi(0x80, 60, 0);
     bad += check("  MIDI IN: note 60 under F sounds F4; the chord moving, its note-off ends it", ok && !nsound(F));
-    F->p[P_AMODE] = 1;                                  /* ARP UP */
+    F->p[P_AMODE] = 1;                                  /* (phrase-arp) PH1: the followed root and its third */
+    phr_pool_clear();
+    phr_set(0, 0, 0x0F);
+    phr_set(0, 1, (uint8_t)((4 << 4) | 15));
     key_down(K(60));
     key_down(K(64));
     ok = 0;

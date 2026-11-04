@@ -245,9 +245,6 @@ static uint32_t play_leds(void)
         s[i] = t->seq_notes[i];
     if (t->arp_note)
         s[n++] = t->arp_note;
-    for (i = 0; i < 3u; i++)                            /* (the ARP's CHORD) */
-        if (t->arp_ch[i])
-            s[n++] = t->arp_ch[i];
     for (k = 0; n && k < 27u; k++) {
         note = kb_map(t, k);
         for (i = 0, hit = 0; i < n; i++)

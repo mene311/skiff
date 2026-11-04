@@ -118,6 +118,8 @@ static void busy_pattern(void)
     put_step(&trk[4], 2, 1, N57, ST_TIE, 0);
     put_step(&trk[4], 8, 1, N55, ST_NOTE, 0);
     trk[2].p[P_AMODE] = 1;                        /* T3: the ARP */
+    phr_pool_clear();                             /* (phrase-arp) PH1: the root alone, full gate */
+    phr_set(0, 0, 0x0F);
     trk[5].p[P_FOLLOW] = 1;                       /* T6 follows T1's chords */
 }
 
@@ -204,7 +206,9 @@ static int test_midi_in(void)
     midi_enqueue(0x08u | 0x80u << 8 | 64u << 16, 1);
     blk(2);
     bad += check("  its note-off: nothing out either", !gate_note(t, 64) && lgn == 0u);
-    t->p[P_AMODE] = 1;                            /* the ARP over a MIDI note: the ARP's notes are T1's own */
+    t->p[P_AMODE] = 1;                            /* (phrase-arp) the ARP over a MIDI note: the ARP's notes are T1's own */
+    phr_pool_clear();
+    phr_set(0, 0, 0x0F);
     before = lgn;
     midi_enqueue(0x09u | 0x90u << 8 | 64u << 16 | 100u << 24, 1);
     blk(BAR_BLOCKS / 2u);

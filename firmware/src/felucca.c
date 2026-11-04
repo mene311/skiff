@@ -119,6 +119,7 @@ static inline __attribute__((always_inline)) void *audio_far(void *p) { void *vo
 #if FELUCCA_UART
 #include "midi_uart.c"
 #endif
+#include "phr.c"                 /* Skiff (phrase-arp): the phrase pool's RAM image, read by seq.c's arp */
 #include "seq.c"
 #include "audio.c"
 
@@ -142,6 +143,7 @@ static inline __attribute__((always_inline)) void *audio_far(void *p) { void *vo
 #include "upreset.c"             /* user presets (RAM mirror; flash with FELUCCA_FLASH) */
 #include "project.c"
 #include "bank.c"                /* Skiff: the pattern bank (SAVE > PATTERNS) */
+#include "phr_stor.c"            /* Skiff (phrase-arp): the pool's flash object (storage.c st_load/st_save) */
 #if FELUCCA_OTA
 #include "ota.c"
 #include "ota_hw.c"
