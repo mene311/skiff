@@ -80,4 +80,35 @@ check("the pool comes back with the saved flash (the phrase plays)", b.peak > 0)
 b.tap(B.REC);
 b.tap(B.PLAY);
 
+// clear + undo on the phrase's screen, through the panel itself: SHIFT + REC opens the REC layer (locked),
+// the CLEAR key (F3) held clears, SAVE held puts the phrase back
+const c = await device(null);
+c.render(500);
+c.tap(B.ARP);
+c.turn(EN.K1, 15);
+c.tap(B.REC);                                        // the phrase screen: arms only, no auto-play
+c.key(7, 40);                                        // step 0: the root
+c.ex.web_buttons((1 << B.HOME) | (1 << B.REC)); c.render(120);   // SHIFT + REC: the REC layer, locked
+c.ex.web_buttons(1 << B.HOME); c.render(60);
+c.ex.web_buttons(0); c.render(60);
+c.ex.web_keys(1 << 0); c.render(450);                // the CLEAR key (F3) held for the hold time
+c.ex.web_keys(0); c.render(60);
+c.tap(B.REC);                                        // (its press closes the locked layer, no arming change)
+c.tap(B.HOME);
+c.tap(B.REC);                                        // disarm
+c.peak = 0;
+c.tap(B.REC);                                        // arm + auto-play, away from the phrase screen
+c.key(7, 200);
+check("CLEAR: the phrase is empty, the arp plays nothing (only the armed track's click)", c.peak < 0.01);
+c.tap(B.REC); c.tap(B.PLAY);
+c.tap(B.ARP);
+c.ex.web_buttons(1 << B.SAVE); c.render(450);        // SAVE held: the phrase comes back
+c.ex.web_buttons(0); c.render(60);
+c.tap(B.HOME);
+c.peak = 0;
+c.tap(B.REC);
+c.key(7, 200);
+check("UNDO (SAVE held): the phrase is back, the arp plays it", c.peak > 0);
+c.tap(B.REC); c.tap(B.PLAY);
+
 process.exit(fails ? 1 : 0);
