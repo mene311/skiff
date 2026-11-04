@@ -195,6 +195,7 @@ static void fl_plain_window_init(void) {}
 #include "../../firmware/src/upreset.c"
 #include "../../firmware/src/project.c"
 #include "../../firmware/src/bank.c"           /* (Skiff: the patterns; phase 5: a project names them) */
+#include "../../firmware/src/phr_stor.c"      /* (phrase-arp) the pool's flash object (storage.c's st_load/st_save) */
 
 /* ------------------------------------------------- main.c and its HAL --- */
 #if FELUCCA_CPU2

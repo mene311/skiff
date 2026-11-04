@@ -51,7 +51,11 @@ static void fm1_delay_ms(uint32_t ms) { (void)ms; }
 #include "../firmware/src/midi_uart.c"                /* TRS MIDI IN: its parser (um_byte) feeds midi_in_q */
 #include "../firmware/src/phr.c"                       /* (phrase-arp) the pool's RAM image, before seq.c as felucca.c */
 #include "../firmware/src/seq.c"
+#if FELUCCA_FLASH
+/* (phrase-arp) with flash, phr_stor.c comes after storage.c (web/emu/felucca_web.c includes it there) */
+#else
 #include "../firmware/src/phr_stor.c"                  /* (phrase-arp) FELUCCA_FLASH is 0 here: the pool is RAM only */
+#endif
 #define inst (trk[0])                   /* the single-part renders below: part 1 */
 
 static void wav_hdr(FILE *f, uint32_t frames)
