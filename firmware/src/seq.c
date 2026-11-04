@@ -378,6 +378,7 @@ static void phr_cap_on(track_t *t, uint32_t note, uint32_t vel)
         cap_root[i] = (uint8_t)note;
         s = 0;
         cap_next[i] = 1;
+        cap_was[i] = 1;                              /* (the pass is active: its end always resets and persists) */
         phr_undo_save(id);                           /* (phrase-arp) one undo: SAVE held puts the pass before back */
         t->arp_pos = 0xFFFFFFF;                      /* the clock starts now */
         t->arp_idx = 0xFFFFFFFFu;

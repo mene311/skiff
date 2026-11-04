@@ -540,6 +540,12 @@ static int rec_tap(void)                                /* 1: the arming changed
         ui_message("KEYS WRITE STEPS");               /* step recording: stopped, at the cursor */
         return 1;
     }
+    if ((song.rec & bit) && !song.playing && !seq_counting() && phr_cap_page &&
+        phr_mode((uint32_t)TSEL->p[P_AMODE])) {
+        ui_message("KEYS WRITE THE PHRASE");          /* (phrase-arp) step entry: REC only arms; PLAY then records
+                                                        * live, each note on the arp clock's step */
+        return 1;
+    }
     if ((song.rec & bit) && !song.playing && !seq_counting()) {
         chain_top();                                  /* ((2.0, #44) a chain from its first part) */
         transport_req = 1;

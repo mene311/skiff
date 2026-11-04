@@ -717,6 +717,26 @@ static int test_rec(void)
         t->p[P_AMODE] = 0;
         phr_cap_page = 0;
     }
+    /* (phrase-arp) REC on the phrase's screen only arms: step entry, no auto-play */
+    ui_power_on();
+    {
+        track_t *t = &trk[0];
+        t->engine = t->eng_req;
+        t->p[P_AMODE] = AM_PHR1;
+        go_page(GR_ARP);
+        frame();                                     /* (phr_cap_page follows the page) */
+        press(B_REC);
+        bad += check("phrase ARP: REC on the phrase's screen arms without starting PLAY",
+                     song.rec == 1u && !transport_req && !song.playing && msg_is("KEYS WRITE THE PHRASE"));
+        fm1_in.notes |= 1u << 7; keyboard_block(); frame();
+        bad += check("phrase ARP: a key writes the phrase's step 0 (the root)", cap_root[0] == kb_map(t, 7) &&
+                     (phr_step(0, 0) & 0xF0u) == 0u);
+        fm1_in.notes = 0; keyboard_block(); frame();
+        bad += check("phrase ARP: its release writes the gate", (phr_step(0, 0) & 15u) != 0u);
+        song.rec = 0;
+        t->p[P_AMODE] = 0;
+        phr_cap_page = 0;
+    }
     return bad;
 }
 

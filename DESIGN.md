@@ -200,9 +200,10 @@ two meanings, told apart by the screen: while the ARP page shows (the phrase's s
 captures the keys played: the first note of the pass is the phrase root (step 0), each next note lands on the step
 the arp clock stands on, one note a step, the first one wins; the pitch becomes its offset from the root, the hold
 time its gate (a note held into the next one gets a full gate: legato). The keys sound as without the ARP, and the
-sequencer's steps stay untouched. With the transport stopped (REC armed, PLAY off), step entry: each note takes the
-next step of the 16 (a 17th writes the phrase over from step 0), no clock, the hold time still measured against
-RATE; the graph's playhead stands on the next step. Anywhere else, REC with a phrase records what the arp plays into the sequencer's
+sequencer's steps stay untouched. REC on the phrase's screen only arms (KEYS WRITE THE PHRASE, no auto-play):
+step entry, each note the next step of the 16 (a 17th writes the phrase over from step 0), no clock, the hold time
+still measured against RATE, the graph's playhead on the next step; PLAY then records live, each note on the arp
+clock's step. Anywhere else, REC with a phrase records what the arp plays into the sequencer's
 steps, exactly as with the shapes (the phrase keeps playing from the keys held). The pass ends when REC is disarmed or the
 transport stops: the pool is written (`phr_persist`). The REC layer's CLEAR, on the phrase's screen, clears the
 phrase instead of the steps (PHRASE CLEARED, PHRASE ALREADY EMPTY when it is); one undo (SAVE held: PHRASE RESTORED)

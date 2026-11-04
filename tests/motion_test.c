@@ -486,10 +486,10 @@ static int phrase_arp(void)
     ok &= cap_root[0] == 0xFFu && cap_note[0] == 0xFFu && cap_seen[0] == 0;
     phr_cap_page = 0;
     bad += check("(phrase-arp) capture: the root, each next note its offset on the clock's step, one a step, gates", ok);
-    phr_undo_save(0);                            /* CLEAR's backup, then the undo (SAVE held on the phrase's screen) */
-    phr_clear(0);
-    ok = phr_empty(0);
-    ok &= phr_undo_try(0) && !phr_empty(0) && (phr_step(1u, 1u) & 0xF0u) == 0x40u;
+    phr_undo_save(1);                            /* CLEAR's backup: PH2, as the capture left it */
+    phr_clear(1);
+    ok = phr_empty(1);
+    ok &= phr_undo_try(1) && !phr_empty(1) && (phr_step(1u, 1u) & 0xF0u) == 0x40u && phr_step(1u, 0u) == 0x0Fu;
     bad += check("(phrase-arp) clear and undo: the phrase emptied, then put back as it was", ok);
     /* step entry: REC armed with the transport stopped: each note the next step, no clock, gates from the RATE */
     phr_pool_clear();
