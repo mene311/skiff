@@ -2305,7 +2305,12 @@ static void ui_input(void)
         return;
     }
     if (save == BT_HOLD)                                /* SAVE held: undo, one level back (ui.c undo_step) */
-        undo_step(0);                                   /* (Skiff: one level back; OCT- / OCT+ then: ui.undo_w) */
+        if (phr_cap_page && phr_mode((uint32_t)TSEL->p[P_AMODE]) &&
+            phr_undo_try((uint32_t)TSEL->p[P_AMODE] - AM_PHR1)) {
+            ui_message("PHRASE RESTORED");              /* (phrase-arp: the pass before or the clear, one level) */
+            ui.force = 1;
+        } else
+            undo_step(0);                               /* (Skiff: one level back; OCT- / OCT+ then: ui.undo_w) */
     else if (save == BT_TAP && !ui.confirm)             /* SAVE acts on release (a hold is the undo) */
         open_family(FAM_SAVE);
     if (ui.confirm) {                                   /* OCT- cancels, OCT+ does it; nothing else reacts */

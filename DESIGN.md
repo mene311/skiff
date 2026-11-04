@@ -200,12 +200,17 @@ two meanings, told apart by the screen: while the ARP page shows (the phrase's s
 captures the keys played: the first note of the pass is the phrase root (step 0), each next note lands on the step
 the arp clock stands on, one note a step, the first one wins; the pitch becomes its offset from the root, the hold
 time its gate (a note held into the next one gets a full gate: legato). The keys sound as without the ARP, and the
-sequencer's steps stay untouched. Anywhere else, REC with a phrase records what the arp plays into the sequencer's
+sequencer's steps stay untouched. With the transport stopped (REC armed, PLAY off), step entry: each note takes the
+next step of the 16 (a 17th writes the phrase over from step 0), no clock, the hold time still measured against
+RATE; the graph's playhead stands on the next step. Anywhere else, REC with a phrase records what the arp plays into the sequencer's
 steps, exactly as with the shapes (the phrase keeps playing from the keys held). The pass ends when REC is disarmed or the
-transport stops: the pool is written (`phr_persist`). A phrase cleared is all empty steps: the arp rests. The pool is
+transport stops: the pool is written (`phr_persist`). The REC layer's CLEAR, on the phrase's screen, clears the
+phrase instead of the steps (PHRASE CLEARED, PHRASE ALREADY EMPTY when it is); one undo (SAVE held: PHRASE RESTORED)
+puts the phrase back as it was before the last pass or the clear. The pool is
 128 bytes in a store A/B pair (OBJ_PHRASES, the pattern bank's last two sectors of before: the bank keeps its 16
 chunk homes and 2 wear spares, the 64 patterns untouched). The graph (`ui_pgraph.c`) draws the phrase's 16 steps, a
-tile as long as its gate on the offset's row, EMPTY: REC TO RECORD when there is none.
+tile as long as its gate on the offset's row (a note pressed, its gate not yet: a wider preview tile), the step the
+arp clock stands on under the playhead, EMPTY: REC TO RECORD when there is none.
 
 **PERFORM layer and live switching** (`ui_layer.c` `layer_perf`, `launch.c`, `bank.c` `bank_switch`): ARP held.
 - **The map** (the B mockup's rows): a row per track, its number in its colour, its list's 16 entries A–P across as the white keys run (F3 = A to G5 = P).

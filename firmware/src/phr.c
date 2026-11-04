@@ -64,3 +64,31 @@ static void phr_pool_clear(void)             /* all of them (a fresh pool: the t
     memset(phr_len, 0, sizeof phr_len);
     phr_dirty = 1;
 }
+
+/* (phrase-arp) the one undo: SAVE held on the phrase's screen puts the phrase back. phr_undo_save keeps the bytes
+ * before a capture pass's first note (seq.c phr_cap_on) or a CLEAR (ui_layer.c rec_clear); phr_undo_try restores
+ * them (0: no backup for this phrase). One level: a newer save overwrites the older. */
+static uint8_t phr_bak[PHR_STEPS], phr_bak_id = 0xFFu;   /* (255: none) */
+static void phr_undo_save(uint32_t id)
+{
+    memcpy(phr_bak, &phr_pool[PHR_STEP_OF(id, 0)], PHR_STEPS);
+    phr_bak_id = (uint8_t)id;
+}
+static int phr_undo_try(uint32_t id)
+{
+    if (phr_bak_id != (uint8_t)id)
+        return 0;
+    memcpy(&phr_pool[PHR_STEP_OF(id, 0)], phr_bak, PHR_STEPS);
+    phr_bak_id = 0xFFu;
+    {   /* the lens from the restored bytes */
+        uint32_t k, l = 0;
+        for (k = 0; k < PHR_STEPS; k++)
+            if (phr_pool[PHR_STEP_OF(id, k)])
+                l = k + 1u;
+        phr_len[id & (PHR_N - 1u)] = (uint8_t)l;
+    }
+    phr_dirty = 1;
+    phr_persist();
+    return 1;
+}
+static int phr_empty(uint32_t id) { return phr_len[id & (PHR_N - 1u)] == 0; }

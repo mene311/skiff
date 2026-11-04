@@ -416,10 +416,28 @@ static void tools_key(uint32_t p)
 }
 
 /* REC: CLEAR, the selected track's steps and automation (and ARP's latched chord): one undo (SAVE held), no dialog,
- * as SEQ TOOLS' CLEAR (up to 1.1.4 REC held on SEQ asked first, CF_CLEAR_SEQ). Its own undo copy (not a sound load's) */
+ * as SEQ TOOLS' CLEAR (up to 1.1.4 REC held on SEQ asked first, CF_CLEAR_SEQ). Its own undo copy (not a sound load's).
+ * (phrase-arp) On the phrase's screen (the ARP page under the layer) with a pool phrase: CLEAR clears the phrase
+ * instead, one undo (SAVE held), and the pool is written. */
 static void rec_clear(void)
 {
     track_t *t = TSEL;
+    if (phr_under() && phr_mode((uint32_t)t->p[P_AMODE])) {
+        uint32_t id = (uint32_t)t->p[P_AMODE] - AM_PHR1;
+        if (phr_empty(id)) {
+            ui_message("PHRASE ALREADY EMPTY");
+            return;
+        }
+        phr_undo_save(id);
+        phr_clear(id);
+        phr_persist();
+        ui_message("PHRASE CLEARED");
+        if (!lys.loaded)                                 /* (the first one: how to take it back) */
+            str_cpy(ui.msg2, "HOLD [SAVE]: UNDO", sizeof ui.msg2);
+        lys.loaded = 1;
+        ui.force = 1;
+        return;
+    }
     if (seq_is_empty(t) && !motion_count(t)) {
         ui_message("NOTHING TO CLEAR");
         return;

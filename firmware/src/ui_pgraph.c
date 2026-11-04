@@ -670,6 +670,8 @@ static void graph_arp(const track_t *t, uint16_t c)
             used++;
             r = s >> 4u;
             gw = 2 + (s & 15u) * 10 / 15;
+            if (!(s & 15u))
+                gw = 8;                              /* (phrase-arp) the note pressed, its gate not yet: a preview) */
             skip = ((i * 2654435761u >> 25) & 127u) > (uint32_t)t->p[P_APROB];
             col = i % 4u == 0u ? T_TEXT : c;
             y = base - (int32_t)r * pitch - th / 2;
@@ -688,6 +690,16 @@ static void graph_arp(const track_t *t, uint16_t c)
         }
         if (!used)
             pg_text(30, 117, "EMPTY: REC TO RECORD", T_DIM);
+        else {                                       /* (phrase-arp) the playhead: the step the arp clock stands on,
+                                                      * or the next step in step entry (REC armed, stopped) */
+            uint32_t ph = t->arp_idx & 15u;
+            if (phr_capturing(t) && !song.playing)
+                ph = cap_next[trk_index(t)] & 15u;
+            {
+                int32_t x = 30 + (int32_t)(ph * 124u / 10u) + ((ph & 1u) ? sw : 0);
+                cv_rect(x - 1, base - 15 * pitch - th / 2 - 3, 3, 15 * pitch + th + 6, T_TEXT);
+            }
+        }
         return;
     }
     uint32_t oct = t->p[P_AOCT] > 0 ? (uint32_t)t->p[P_AOCT] : 1u;

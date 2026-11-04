@@ -332,12 +332,13 @@ static uint8_t cap_root[NTRK] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};   /* (255:
 static uint8_t cap_note[NTRK] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 static uint32_t cap_tm[NTRK];
 static uint16_t cap_seen[NTRK];
+static uint8_t cap_next[NTRK];                  /* (step entry: the step the next note takes, the transport stopped) */
 static uint8_t phr_cap_page;                    /* (the phrase's screen shows: the ARP page family, no HOME, MENU,
-                                                 * dialog or layer over it; main.c sets it each frame) */
+                                                 * dialog or layer over it; ui_input sets it each frame) */
 static int phr_capturing(const track_t *t)      /* the keys write the phrase only while its screen shows; anywhere
                                                  * else REC with a phrase records what the arp plays into the steps */
 {
-    return rec_on(t) && phr_mode((uint32_t)t->p[P_AMODE]) && phr_cap_page;
+    return ((song.rec >> trk_index(t)) & 1u) && phr_mode((uint32_t)t->p[P_AMODE]) && phr_cap_page;
 }
 
 /* the phrase's root: the held notes' mapped pitch, the first played (ORDER PLAYED) or the lowest (ORDER NOTE); -1
@@ -376,8 +377,14 @@ static void phr_cap_on(track_t *t, uint32_t note, uint32_t vel)
     if (cap_root[i] == 0xFFu) {                      /* the pass's first note: the phrase root, step 0 */
         cap_root[i] = (uint8_t)note;
         s = 0;
+        cap_next[i] = 1;
+        phr_undo_save(id);                           /* (phrase-arp) one undo: SAVE held puts the pass before back */
         t->arp_pos = 0xFFFFFFF;                      /* the clock starts now */
         t->arp_idx = 0xFFFFFFFFu;
+    } else if (!song.playing) {                      /* (phrase-arp) step entry: each note the next step, no clock;
+                                                      * a 17th note writes the phrase over from step 0 */
+        s = cap_next[i] & 15u;
+        cap_next[i] = (uint8_t)((s + 1u) & 15u);
     } else {
         s = t->arp_idx & 15u;
         if ((cap_seen[i] >> s) & 1u) {               /* this step has the pass's note: the first one wins */
@@ -765,6 +772,7 @@ static void arp_step(track_t *t, uint32_t n, uint32_t gate_n)
             cap_root[i] = cap_note[i] = 0xFFu;
             cap_seen[i] = 0;
             cap_tm[i] = 0;
+            cap_next[i] = 0;
         }
         cap_was[i] = cap;
     }

@@ -486,6 +486,30 @@ static int phrase_arp(void)
     ok &= cap_root[0] == 0xFFu && cap_note[0] == 0xFFu && cap_seen[0] == 0;
     phr_cap_page = 0;
     bad += check("(phrase-arp) capture: the root, each next note its offset on the clock's step, one a step, gates", ok);
+    phr_undo_save(0);                            /* CLEAR's backup, then the undo (SAVE held on the phrase's screen) */
+    phr_clear(0);
+    ok = phr_empty(0);
+    ok &= phr_undo_try(0) && !phr_empty(0) && (phr_step(1u, 1u) & 0xF0u) == 0x40u;
+    bad += check("(phrase-arp) clear and undo: the phrase emptied, then put back as it was", ok);
+    /* step entry: REC armed with the transport stopped: each note the next step, no clock, gates from the RATE */
+    phr_pool_clear();
+    cap_root[0] = cap_note[0] = 0xFFu; cap_seen[0] = 0; cap_was[0] = 0; cap_tm[0] = 0; cap_next[0] = 0;
+    t->p[P_AMODE] = AM_PHR3;
+    phr_cap_page = 1;
+    song.rec = 1; song.playing = 0;
+    input_on(t, 60, 100);                        /* the root, step 0 */
+    ok = cap_root[0] == 60u && phr_step(2u, 0u) == 0u;
+    input_on(t, 64, 100);                        /* the next step, no clock */
+    ok &= (phr_step(2u, 1u) & 0xF0u) == 0x40u;
+    input_on(t, 67, 100);                        /* .. and the next */
+    ok &= (phr_step(2u, 2u) & 0xF0u) == 0x70u;
+    input_off(t, 60); input_off(t, 64); input_off(t, 67);
+    ok &= (phr_step(2u, 2u) & 15u) != 0u;        /* the release wrote the gate (from the RATE's step) */
+    song.rec = 0;
+    arp_tick(t, CTL);                            /* the pass ended: reset + persist */
+    ok &= cap_root[0] == 0xFFu && cap_next[0] == 0;
+    phr_cap_page = 0;
+    bad += check("(phrase-arp) step entry: REC armed and stopped, each note the next step, gates from the RATE", ok);
     return bad;
 }
 

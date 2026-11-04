@@ -501,6 +501,12 @@ static void scr_shown(void)                            /* after the frame: the r
 
 static const page_t *page_over;   /* a quick layer's own four knobs (ui_layer.c), while it edits or draws them */
 static const page_t *cur_page(void) { return page_over ? page_over : &PAGES[ui.page]; }
+static int phr_under(void)          /* (phrase-arp) the phrase's screen is the page a layer covers: the ARP page,
+                                     * no HOME, MENU or dialog; the REC layer's CLEAR goes by this, not by
+                                     * phr_cap_page (a layer open means the page is under it) */
+{
+    return !ui.home && !ui.menu && !ui.confirm && PAGES[ui.page].fam == FAM_ARP;
+}
 
 /* (FM6 LAB) a sheet: a page whose four knobs are a window over a table, SELECT moving it before the pages beside it
  * (DRUM-X's SOUND, FM6's OPERATOR and ALL OPS: ui_input.c SHEETS). sheet_of: the page's, or 0 */
