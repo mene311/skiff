@@ -737,6 +737,25 @@ static int test_rec(void)
         t->p[P_AMODE] = 0;
         phr_cap_page = 0;
     }
+    /* (phrase-arp) the PHRASE page: KNOB 4 CLEAR, OCT+ does it, SAVE held undoes */
+    ui_power_on();
+    {
+        track_t *t = &trk[0];
+        t->engine = t->eng_req;
+        t->p[P_AMODE] = AM_PHR1;
+        phr_pool_clear();
+        phr_set(0, 0, 0x0F);
+        go_page(GR_PHR);
+        frame();
+        press(B_OCTUP);
+        bad += check("phrase page: OCT+ clears the phrase (PHRASE CLEARED)", phr_empty(0) && msg_is("PHRASE CLEARED"));
+        press(B_OCTUP);
+        bad += check("phrase page: again, nothing to clear", msg_is("PHRASE ALREADY EMPTY"));
+        btn_down(B_SAVE); frame(); frames(800); btn_up(B_SAVE); frame();
+        bad += check("phrase page: SAVE held puts the phrase back", !phr_empty(0) && (phr_step(0, 0) & 0xF0u) == 0u);
+        phr_pool_clear();
+        t->p[P_AMODE] = 0;
+    }
     return bad;
 }
 

@@ -968,6 +968,18 @@ static void draw_columns(void)
                                                          * #46) KNOB 4 the action, OCT+ does it: the footer) */
         return;
     }
+    if (cur_page()->graph == GR_PHR) {                   /* (phrase-arp) the phrase's screen: KNOB 1 the phrase,
+                                                         * KNOB 4 CLEAR (OCT+), the footer says it */
+        param_format(&TP[P_AMODE], TSEL->p[P_AMODE], val, &unit);
+        card_mot_of(&TSEL->p[P_AMODE]);
+        card_span_of(&TP[P_AMODE]);
+        draw_column(0, "PHRASE", val, unit, VR_LIVE, RATIO(&TP[P_AMODE], TSEL->p[P_AMODE]),
+                    param_icon(&TP[P_AMODE], TSEL->p[P_AMODE]));
+        draw_column(1, "", "--", "", VR_DIM, -1, ICON_NONE);
+        draw_column(2, "", "--", "", VR_DIM, -1, ICON_NONE);
+        draw_act_column(3, "CLEAR", VR_THEME, ICON_AUTO);
+        return;
+    }
     if (cur_page()->graph == GR_USER) {                  /* SLOT, then three GO buttons */
         int used = up_used(ui.uslot);
         up_slot_label(val, ui.uslot);

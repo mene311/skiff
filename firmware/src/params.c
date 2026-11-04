@@ -493,6 +493,7 @@ enum { GR_NONE, GR_ADSR, GR_LFO, GR_STEPS, GR_ARP, GR_SCALE, GR_FX, GR_ROLL, GR_
        GR_LANES,                   /* (Skiff U3, R6) EDIT > LANES (DRUM): the eight lane levels, KNOB 1 the lane (ui.lane) */
        GR_DELAY, GR_REVERB, GR_CHORUS, GR_GLOBAL, GR_VOICE, GR_VOICE2,   /* ((2.0) ENV DEST LFO DEST: MOD) */
        GR_ARP2,                    /* (Skiff U5, V1) the pages' own graphs, the scope's before (ui_pgraph.c); ARP 2: ARP's */
+       GR_PHR,                     /* (phrase-arp) the PHRASE page: the phrase's graph, KNOB 4 CLEAR */
        GR_FMOP, GR_FMALL,          /* (FM6 LAB) EDIT > OPERATOR and ALL OPS: FM6's patch, two sheets (ui_fm6.c) */
        GR_DRIVE,                   /* (Skiff phase 9) FX > DRIVE: the TYPE's transfer at the drive (ui_pgraph.c) */
        GR_INS,                     /* (Skiff 1.3) FX > INSERT: its TYPE's transfer or sweep (ui_pgraph.c graph_insert) */
@@ -560,6 +561,8 @@ static const page_t PAGES[] = {
     {"PROJECT", FAM_SAVE, SC_GLOBAL, GR_SLOTS, {G_SLOT, 0xFF, G_LOAD, G_SAVE}},
     {"ARP", FAM_ARP, SC_TRACK, GR_ARP, {P_AMODE, P_ARATE, P_AOCT, P_AGATE}},
     {"ARP 2", FAM_ARP, SC_TRACK, GR_ARP2, {P_ASWING, P_APROB, P_AHOLD, P_AORDER}},
+    {"PHRASE", FAM_ARP, SC_TRACK, GR_PHR, {P_AMODE, 0xFF, 0xFF, 0xFF}},   /* (phrase-arp) KNOB 1 the phrase,
+                                                                           * KNOB 4 CLEAR (OCT+) */
     {"NOTES", FAM_SEQ, SC_STEP, GR_ROLL, {0, 1, 2, 3}},   /* (Skiff 2.0, D: STEP ROLL CHANCE PLAY as two pages) the roll:
                                                          * PITCH START LENGTH VELOCITY of the selection (a DRUM track:
                                                          * the grid, LANE HIT ACC VELOCITY); PRESETS the step */

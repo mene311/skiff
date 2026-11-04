@@ -1638,7 +1638,7 @@ static uint32_t graph_signature(void)
             h = (h ^ t->v[i].active << i) * 16777619u;
         h ^= (t->rr + 1u) * 40503u;
     }
-    if (pg->graph == GR_ARP || pg->graph == GR_ARP2) {   /* (Skiff U5) the notes held */
+    if (pg->graph == GR_ARP || pg->graph == GR_ARP2 || pg->graph == GR_PHR) {   /* (Skiff U5) the notes held */
         for (i = 0; i < t->nheld && i < 16u; i++)
             h = (h ^ t->held[i]) * 16777619u;
         h ^= (t->nheld + 1u) * 104729u;
@@ -2718,6 +2718,7 @@ static void draw_graph(void)
             break;
         case GR_ARP:
         case GR_ARP2:
+        case GR_PHR:
             cv_oy = 0;
             graph_arp(t, c);
             break;

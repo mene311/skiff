@@ -2389,6 +2389,8 @@ static uint32_t act_cols(void)                   /* the columns that are actions
         return 14u;                              /* ((Skiff U2) NAME, was EDIT; (1.2.1) DELETE or NAME) LOAD (or NEW) SAVE */
     if (pg->graph == GR_BANK)
         return 8u;                               /* ((Skiff phase 5) the pool view: CLEAR, always picked: act_col) */
+    if (pg->graph == GR_PHR)
+        return 8u;                               /* (phrase-arp) the phrase's screen: KNOB 4 CLEAR, always picked */
     if (pg->graph == GR_SLICES)
         return slice_page_ok() ? 12u : 0u;       /* SPLIT JOIN (a SLICE track only) */
     if (pg->scope == SC_GLOBAL)
@@ -2403,6 +2405,7 @@ static uint32_t act_col(void)
 {
     if (!ui.home && ((cur_page()->graph == GR_EVENTS && !ui.ev_top) || cur_page()->graph == GR_SONG)) return 5u;
     if (!ui.home && cur_page()->graph == GR_BANK) return 4u;
+    if (!ui.home && cur_page()->graph == GR_PHR) return 4u;   /* (phrase-arp) CLEAR, as the pool's ACTION */
     return ui.act;
 }
 
@@ -2435,6 +2438,8 @@ static const char *act_name(uint32_t c)          /* column c's action (the foote
         return "NEW";                            /* ((1.2.1, #6) an empty slot) */
     if (cur_page()->graph == GR_BANK)
         return bank_act_name();
+    if (cur_page()->graph == GR_PHR)
+        return "CLEAR";
     if (cur_page()->graph == GR_SLICES)
         return c == 3u ? "JOIN" : "SPLIT";
     return id == G_LOAD ? "LOAD" : "SAVE";

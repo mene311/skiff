@@ -195,7 +195,9 @@ plays any phrase, each transposed to its own held notes. A phrase is up to 16 st
 signed 4-bit semitone offset from the phrase root (bits 7..4, -8..+7) and its gate as a fraction of the step (bits
 3..0, 15 the whole step). A step of 0 is empty, a hole in the phrase. The phrase loops at its length (its last
 nonzero step + 1); the root is the lowest held note, or the first played with ORDER PLAYED. RATE, SWING, CHANCE,
-OCTAVE and HOLD work as for the shapes; the recorded gates are absolute (GATE is the shapes' own). Recording has
+OCTAVE and HOLD work as for the shapes; the recorded gates are absolute (GATE is the shapes' own). The PHRASE page
+(SELECT from ARP / ARP 2) shows the phrase: KNOB 1 picks it, KNOB 4 CLEAR with OCT+ clears it (PHRASE CLEARED, one
+undo: SAVE held), and REC there arms step entry or records live as on the ARP pages. Recording has
 two meanings, told apart by the screen: while the ARP page shows (the phrase's screen), REC armed with a pool phrase
 captures the keys played: the first note of the pass is the phrase root (step 0), each next note lands on the step
 the arp clock stands on, one note a step, the first one wins; the pitch becomes its offset from the root, the hold
@@ -209,7 +211,7 @@ transport stops: the pool is written (`phr_persist`). The REC layer's CLEAR, on 
 phrase instead of the steps (PHRASE CLEARED, PHRASE ALREADY EMPTY when it is); one undo (SAVE held: PHRASE RESTORED)
 puts the phrase back as it was before the last pass or the clear. The pool is
 128 bytes in a store A/B pair (OBJ_PHRASES, the pattern bank's last two sectors of before: the bank keeps its 16
-chunk homes and 2 wear spares, the 64 patterns untouched). The graph (`ui_pgraph.c`) draws the phrase's 16 steps, a
+chunk homes and 2 wear spares, the 64 patterns untouched). The graph (`ui_pgraph.c`, the ARP pages and PHRASE) draws the phrase's 16 steps, a
 tile as long as its gate on the offset's row (a note pressed, its gate not yet: a wider preview tile), the step the
 arp clock stands on under the playhead, EMPTY: REC TO RECORD when there is none.
 

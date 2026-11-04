@@ -1577,6 +1577,14 @@ static void edit_param(uint32_t slot, int32_t steps)
         ui.bact = (uint8_t)clamp((int32_t)ui.bact + (steps > 0 ? 1 : -1), 0, BA_N - 1);
         return;
     }
+    if (pg->graph == GR_PHR && slot == 0u) {             /* (phrase-arp) KNOB 1 the phrase, as ARP's MODE */
+        d = &TP[P_AMODE];
+        v = param_turn(d, TSEL->p[P_AMODE], accel(EN_K1, steps, 0));
+        TSEL->p[P_AMODE] = (int16_t)v;
+        motion_capture(TSEL, P_AMODE, TSEL->p[P_AMODE]);
+        ml_knob(TSEL, P_AMODE);
+        return;
+    }
     if ((act_cols() >> slot) & 1u) {                      /* an action's knob picks it (right) or drops it (left); */
         ui.act = steps > 0 ? (uint8_t)(slot + 1u) : ui.act == slot + 1u ? 0u : ui.act;   /* OCT+ does it (act_do) */
         ui.act2 = 0;
@@ -1639,6 +1647,23 @@ static void act_do(void)
         return;
     }
 #endif
+    if (cur_page()->graph == GR_PHR) {                   /* (phrase-arp) KNOB 4's CLEAR, OCT+ does it, one undo */
+        uint32_t id = (uint32_t)TSEL->p[P_AMODE] - AM_PHR1;
+        if (!phr_mode((uint32_t)TSEL->p[P_AMODE]))
+            ui_message("PICK A PHRASE FIRST");
+        else if (phr_empty(id))
+            ui_message("PHRASE ALREADY EMPTY");
+        else {
+            phr_undo_save(id);
+            phr_clear(id);
+            phr_persist();
+            ui_message("PHRASE CLEARED");
+            str_cpy(ui.msg2, "HOLD [SAVE]: UNDO", sizeof ui.msg2);
+        }
+        ui.act = 0;
+        ui.force = 1;
+        return;
+    }
     if (cur_page()->graph == GR_BANK) {                   /* (Skiff phase 5) the pool view: CLEAR the pattern picked,
                                                          * after its dialog, when nothing uses it (bank.c pool_clear);
                                                          * ((2.0, #46) KNOB 4's ACTION: or EMPTY it, or CLEAR UNUSED) */
