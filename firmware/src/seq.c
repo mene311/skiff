@@ -332,7 +332,13 @@ static uint8_t cap_root[NTRK] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};   /* (255:
 static uint8_t cap_note[NTRK] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 static uint32_t cap_tm[NTRK];
 static uint16_t cap_seen[NTRK];
-static int phr_capturing(const track_t *t) { return rec_on(t) && phr_mode((uint32_t)t->p[P_AMODE]); }
+static uint8_t phr_cap_page;                    /* (the phrase's screen shows: the ARP page family, no HOME, MENU,
+                                                 * dialog or layer over it; main.c sets it each frame) */
+static int phr_capturing(const track_t *t)      /* the keys write the phrase only while its screen shows; anywhere
+                                                 * else REC with a phrase records what the arp plays into the steps */
+{
+    return rec_on(t) && phr_mode((uint32_t)t->p[P_AMODE]) && phr_cap_page;
+}
 
 /* the phrase's root: the held notes' mapped pitch, the first played (ORDER PLAYED) or the lowest (ORDER NOTE); -1
  * when there is none (no keys, or every key silent now: QNT WHITE's black keys). Mirrors what the arp's note list
@@ -1065,13 +1071,13 @@ static void input_on(track_t *t, uint32_t note, uint32_t vel)
     last_hits++;
     if (cin_left)
         cin_keep(t, note, vel);
-    if (arp && rec_on(t) && phr_mode((uint32_t)t->p[P_AMODE]))   /* (phrase-arp) the pass: the keys sound and write */
-        phr_cap_on(t, note, vel);                                /* the phrase, as without the ARP */
-    else if (rec_on(t) && !arp)                     /* (ARP on: arp_tick records its notes) */
-        rec_note(t, note, vel);
+    if (phr_capturing(t))                           /* (phrase-arp) the pass, only on the phrase's screen: the keys */
+        phr_cap_on(t, note, vel);                   /* sound and write the phrase, as without the ARP */
+    else if (rec_on(t) && !arp)
+        rec_note(t, note, vel);                     /* (ARP on: arp_tick records its notes) */
     else if (!arp)
         take_note(t, note, vel);                    /* (Skiff) not recorded: TAKES' log (take.c) */
-    if (arp && !(rec_on(t) && phr_mode((uint32_t)t->p[P_AMODE])))
+    if (arp && !phr_capturing(t))
         arp_add(t, note);
     else if (!arp)
         trk_note_on(t, note, vel);

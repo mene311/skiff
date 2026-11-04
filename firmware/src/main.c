@@ -353,6 +353,9 @@ static void fm1_main(void)
         felucca_dbg.home = ui.home;
         felucca_dbg.stage = 1;
         ui_input();
+        phr_cap_page = (uint8_t)(!ui.home && !ui.menu && !ui.confirm && !page_over && cur_page()->fam == FAM_ARP);
+                                                       /* (phrase-arp) the capture pass runs only on the phrase's
+                                                        * screen; anywhere else REC records what the arp plays */
 #if BOARD_SMK37
         smk_ui_frame();                               /* the SMK-37's own controls (smk_ui.c) */
 #endif

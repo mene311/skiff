@@ -195,11 +195,13 @@ plays any phrase, each transposed to its own held notes. A phrase is up to 16 st
 signed 4-bit semitone offset from the phrase root (bits 7..4, -8..+7) and its gate as a fraction of the step (bits
 3..0, 15 the whole step). A step of 0 is empty, a hole in the phrase. The phrase loops at its length (its last
 nonzero step + 1); the root is the lowest held note, or the first played with ORDER PLAYED. RATE, SWING, CHANCE,
-OCTAVE and HOLD work as for the shapes; the recorded gates are absolute (GATE is the shapes' own). Recording: REC
-armed with a pool phrase selected, the keys played are captured: the first note of the pass is the phrase root (step
-0), each next note lands on the step the arp clock stands on, one note a step, the first one wins; the pitch becomes
-its offset from the root, the hold time its gate (a note held into the next one gets a full gate: legato). The keys
-sound as without the ARP, and the sequencer's steps stay untouched. The pass ends when REC is disarmed or the
+OCTAVE and HOLD work as for the shapes; the recorded gates are absolute (GATE is the shapes' own). Recording has
+two meanings, told apart by the screen: while the ARP page shows (the phrase's screen), REC armed with a pool phrase
+captures the keys played: the first note of the pass is the phrase root (step 0), each next note lands on the step
+the arp clock stands on, one note a step, the first one wins; the pitch becomes its offset from the root, the hold
+time its gate (a note held into the next one gets a full gate: legato). The keys sound as without the ARP, and the
+sequencer's steps stay untouched. Anywhere else, REC with a phrase records what the arp plays into the sequencer's
+steps, exactly as with the shapes (the phrase keeps playing from the keys held). The pass ends when REC is disarmed or the
 transport stops: the pool is written (`phr_persist`). A phrase cleared is all empty steps: the arp rests. The pool is
 128 bytes in a store A/B pair (OBJ_PHRASES, the pattern bank's last two sectors of before: the bank keeps its 16
 chunk homes and 2 wear spares, the 64 patterns untouched). The graph (`ui_pgraph.c`) draws the phrase's 16 steps, a

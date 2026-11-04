@@ -466,6 +466,7 @@ static int phrase_arp(void)
     phr_pool_clear();
     cap_root[0] = cap_note[0] = 0xFFu; cap_seen[0] = 0; cap_was[0] = 0; cap_tm[0] = 0;
     t->p[P_AMODE] = AM_PHR2;
+    phr_cap_page = 1;                            /* (the ARP page shows) */
     song.rec = 1; song.playing = 1;
     input_on(t, 60, 100);                        /* the first note: the root, step 0 */
     ok = cap_root[0] == 60u && phr_step(1u, 0u) == 0u;    /* the gate comes on release */
@@ -483,6 +484,7 @@ static int phrase_arp(void)
     song.rec = 0; song.playing = 0;
     arp_tick(t, CTL);                            /* the pass ended: reset + persist */
     ok &= cap_root[0] == 0xFFu && cap_note[0] == 0xFFu && cap_seen[0] == 0;
+    phr_cap_page = 0;
     bad += check("(phrase-arp) capture: the root, each next note its offset on the clock's step, one a step, gates", ok);
     return bad;
 }

@@ -703,6 +703,7 @@ static int test_rec(void)
         t->p[P_APROB] = 127;
         phr_pool_clear();
         cap_root[0] = cap_note[0] = 0xFFu; cap_seen[0] = 0; cap_was[0] = 0; cap_tm[0] = 0;
+        phr_cap_page = 1;                        /* (the ARP page shows) */
         song.rec = 1;
         song.playing = 1;
         input_on(t, 60, 100);
@@ -714,6 +715,7 @@ static int test_rec(void)
         input_off(t, 60);
         bad += check("phrase ARP on: the release writes the step's gate", (phr_step(0, 0) & 15u) != 0u);
         t->p[P_AMODE] = 0;
+        phr_cap_page = 0;
     }
     return bad;
 }
