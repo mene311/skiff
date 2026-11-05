@@ -643,64 +643,14 @@ static void graph_flt(const track_t *t, uint16_t c)
 /* ARP and ARP 2: the arp's notes over 16 of its steps, as arp_step plays them (the held notes, or C E G as an
  * example; ORDER, OCTAVE, MODE), a tile as long as GATE, the off steps late by SWING; the steps CHANCE would skip (a
  * fixed pick of about as many) outlined; RND and WALK's picks fixed too */
+static void graph_phr(const track_t *t, uint16_t c);   /* (phrase-arp) ui_graph.c, after the roll it reuses */
+
 static void graph_arp(const track_t *t, uint16_t c)
 {
     static const uint8_t EX[3] = {60, 64, 67};
     uint32_t list[65], cnt = t->nheld ? t->nheld : 3u, len = 0, i, j, o, m = (uint32_t)t->p[P_AMODE];
-    if (phr_mode(m)) {                           /* (phrase-arp) the pool phrase: 16 rows, the root's row centred,
-                                                 * a tile as long as the step's gate on its offset's row, the off
-                                                 * steps late by SWING; the steps CHANCE would skip outlined */
-        uint32_t r, s, used = 0;
-        int32_t pitch, th, base, sw = t->p[P_ASWING] * 12 / 250;
-        pitch = 102 / 16 > 8 ? 8 : 102 / 16;
-        th = pitch - 2 > 2 ? pitch - 2 : 2;
-        base = 115 - (102 - 15 * pitch) / 2;
-        for (i = 0; i < 16u; i++) {
-            int32_t y = base - (int32_t)i * pitch;
-            uint32_t x;
-            for (x = 30; x <= 228; x += 3)
-                cv_pset(x, y, T_LINE);
-        }
-        for (i = 0; i < 16u; i++) {
-            uint32_t gw, skip, col;
-            int32_t x = 30 + (int32_t)(i * 124u / 10u) + ((i & 1u) ? sw : 0), y;
-            s = phr_step(m - AM_PHR1, i);
-            if (!s)
-                continue;
-            used++;
-            r = s >> 4u;
-            gw = 2 + (s & 15u) * 10 / 15;
-            if (!(s & 15u))
-                gw = 8;                              /* (phrase-arp) the note pressed, its gate not yet: a preview) */
-            skip = ((i * 2654435761u >> 25) & 127u) > (uint32_t)t->p[P_APROB];
-            col = i % 4u == 0u ? T_TEXT : c;
-            y = base - (int32_t)r * pitch - th / 2;
-            if (ux.crypt) {                      /* (Skiff C4) CRYPT: a note a #, a skipped one a crossed skull */
-                if (skip)
-                    cr_skull(x - 1, y + th / 2 - 4, T_MID, T_SURF, 1);
-                else
-                    cr_ch(x - 1, y + (pitch >= 16 ? 7 : 4), pitch >= 16 ? &AF_V : &AF_S, '#',
-                          i % 4u == 0u ? T_TEXT : T_THEME);
-                continue;
-            }
-            if (skip)
-                cv_frame(x, y, gw, th, T_MID);
-            else
-                cv_rect(x, y, gw, th, col);
-        }
-        if (!used)
-            pg_text(30, 117, "EMPTY: REC TO RECORD", T_DIM);
-        else {                                       /* (phrase-arp) the playhead: the step the arp clock stands on
-                                                      * (the phrase loops at its length), or the next step in step
-                                                      * entry (REC armed, stopped) */
-            uint32_t ph = t->arp_idx % phr_len_get((uint32_t)t->p[P_AMODE] - AM_PHR1);
-            if (phr_capturing(t) && !song.playing)
-                ph = cap_next[trk_index(t)] & 15u;
-            {
-                int32_t x = 30 + (int32_t)(ph * 124u / 10u) + ((ph & 1u) ? sw : 0);
-                cv_rect(x - 1, base - 15 * pitch - th / 2 - 3, 3, 15 * pitch + th + 6, T_TEXT);
-            }
-        }
+    if (phr_mode(m)) {                           /* (phrase-arp) the pool phrase, drawn as NOTES' roll (ui_graph.c) */
+        graph_phr(t, c);
         return;
     }
     uint32_t oct = t->p[P_AOCT] > 0 ? (uint32_t)t->p[P_AOCT] : 1u;

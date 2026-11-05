@@ -644,6 +644,66 @@ static void graph_roll(const track_t *t, uint16_t c)
         cv_text_r(PR_X0 + 16 * PR_CW, ybot + 2, &AF_S, sc, T_DIM, T_SURF);
     }
 }
+/* (phrase-arp) the pool phrase as NOTES' roll: 16 columns (its steps), rows the phrase's pitches around its root
+ * (center of the panel), a bar as long as the step's gate, the playhead a line at the step the arp clock stands on
+ * (step entry: the next step framed), C labels and the key strip as the roll's. The root shown is the one the arp
+ * plays (no keys held: C4). */
+static void graph_phr(const track_t *t, uint16_t c)
+{
+    uint32_t i, s, id = (uint32_t)t->p[P_AMODE] - AM_PHR1, pl = phr_len_get(id), mask = scale_mask(t), used = 0;
+    int32_t root = phr_root(t), top, y0, ybot;
+    uint32_t ph = t->arp_idx % pl;
+    char nb[8];
+    if (root < 0)
+        root = 60;                                   /* (no keys: the phrase's shape around C4) */
+    root = clamp(root, 8, 120);                      /* (the 16 rows stay inside the note range) */
+    top = root + 7;                                  /* root+7 the highest row, root-8 the lowest */
+    y0 = PR_Y0 + (PR_ROWS * PR_RH) / 2 - 7 * PR_RH;  /* the root's row mid-panel */
+    ybot = y0 + 15 * PR_RH;
+    if (phr_capturing(t) && !song.playing)
+        ph = cap_next[trk_index(t)] & 15u;
+    for (i = 0; i < 16u; i++) {                      /* the rows: the lane, the key, the C names */
+        int32_t p = top - (int32_t)i, y = y0 + (int32_t)i * PR_RH;
+        uint32_t pc = (uint32_t)(p % 12 + 12) % 12u;
+        int in = mask == 0xFFFu ? !KEY_BLACK[pc] : (int)((mask >> (uint32_t)(p - t->p[P_ROOT] + 120) % 12u) & 1u);
+        if (in)
+            cv_rect(PR_X0, y, 16 * PR_CW + 1, PR_RH, T_LANE);
+        cv_rect(PR_KX, y, KEY_BLACK[pc] ? 5 : 9, PR_RH - 1, KEY_BLACK[pc] ? T_DIM : T_RAISE);
+        if (pc == 0u) {
+            int32_t b[4];
+            note_name(nb, (uint32_t)p);
+            text_ink(&AF_S, nb, b);
+            cv_text_on(23 - b[2], y - 5, &AF_S, nb, T_DIM, T_SURF);
+        }
+    }
+    for (i = 0; i <= 16u; i++)                       /* the step lines, the beats brighter */
+        cv_rect(PR_X0 + (int32_t)i * PR_CW, y0, 1, 15 * PR_RH + 1, i % 4u ? T_GRID : T_RAISE);
+    for (i = 0; i < 16u; i++) {                      /* the steps' bars */
+        int32_t x = PR_X0 + (int32_t)i * PR_CW, w;
+        uint32_t off, gate;
+        s = phr_step(id, i);
+        if (!s)
+            continue;
+        used++;
+        off = s >> 4u;
+        gate = s & 15u;
+        {
+            int32_t p = root + (int32_t)(off > 7u ? off - 16u : off);
+            int32_t y = y0 + (top - p) * PR_RH;
+            w = gate ? 2 + (int32_t)gate * (PR_CW - 3) / 15 : 6;   /* (pressed, its gate not yet: a preview) */
+            cv_rect(x + 2, y, w, PR_RH - 1, i == ph && song.playing ? T_ACCENT : c);
+        }
+    }
+    {   /* the playhead: the step the clock stands on (or the next one in step entry), as the roll's line */
+        int32_t x = PR_X0 + (int32_t)ph * PR_CW;
+        if (song.playing)
+            cv_rect(x + 6, y0, 1, 15 * PR_RH + 1, T_ACCENT);
+        else if (phr_capturing(t))
+            cv_frame(x, y0 - 2, PR_CW + 1, 15 * PR_RH + 5, T_TEXT);   /* the next step, framed */
+    }
+    if (!used)
+        cv_text(PR_X0, ybot + 4 - AF_S.asc, &AF_S, "EMPTY: REC TO RECORD", T_DIM);   /* (pg_text is ui_pgraph.c's, after) */
+}
 /* SEQ > NOTES on a DRUM track: the grid, 8 lanes x the 16 steps of the page shown. Lanes by their two-letter
  * names (BD SD CP CH OH TM RS CB; CG CL CY on the other kits). A hit is a rounded square (accented: the
  * accent; a RATCH step's: its 2..4 parts as bars), an empty step a dot (brighter on the beats and on the selected lane); the selected lane is
