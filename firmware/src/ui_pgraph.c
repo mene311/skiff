@@ -690,9 +690,10 @@ static void graph_arp(const track_t *t, uint16_t c)
         }
         if (!used)
             pg_text(30, 117, "EMPTY: REC TO RECORD", T_DIM);
-        else {                                       /* (phrase-arp) the playhead: the step the arp clock stands on,
-                                                      * or the next step in step entry (REC armed, stopped) */
-            uint32_t ph = t->arp_idx & 15u;
+        else {                                       /* (phrase-arp) the playhead: the step the arp clock stands on
+                                                      * (the phrase loops at its length), or the next step in step
+                                                      * entry (REC armed, stopped) */
+            uint32_t ph = t->arp_idx % phr_len_get((uint32_t)t->p[P_AMODE] - AM_PHR1);
             if (phr_capturing(t) && !song.playing)
                 ph = cap_next[trk_index(t)] & 15u;
             {

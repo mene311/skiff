@@ -1642,6 +1642,15 @@ static uint32_t graph_signature(void)
         for (i = 0; i < t->nheld && i < 16u; i++)
             h = (h ^ t->held[i]) * 16777619u;
         h ^= (t->nheld + 1u) * 104729u;
+        if (phr_mode((uint32_t)t->p[P_AMODE])) {    /* (phrase-arp) the phrase's steps, its loop length, the playhead:
+                                                     * the graph redraws as the notes go in and the clock steps */
+            uint32_t pl = phr_len_get((uint32_t)t->p[P_AMODE] - AM_PHR1);
+            for (i = 0; i < pl; i++)
+                h = (h ^ phr_step((uint32_t)t->p[P_AMODE] - AM_PHR1, i)) * 16777619u;
+            h = (h ^ (t->arp_idx % pl)) * 16777619u;
+            if (phr_capturing(t) && !song.playing)
+                h = (h ^ (cap_next[trk_index(t)] & 15u)) * 16777619u;
+        }
     }
     if (pg->graph == GR_BANK)                        /* (Skiff phase 5) the pool, the one picked (and the lists: below) */
         h = (h ^ (bank_gen() * 2654435761u + ui.bslot * 40503u + ui.bact * 7919u)) * 16777619u;   /* ((2.0) ACTION) */
