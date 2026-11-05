@@ -506,8 +506,8 @@ static int phrase_arp(void)
     input_off(t, 60); input_off(t, 64); input_off(t, 67);
     ok &= (phr_step(2u, 2u) & 15u) != 0u;        /* the release wrote the gate (from the RATE's step) */
     song.rec = 0;
-    arp_tick(t, CTL);                            /* the pass ended: reset + persist */
-    ok &= cap_root[0] == 0xFFu && cap_next[0] == 0;
+    arp_tick(t, CTL);                            /* the pass ended: reset + persist (the cursor stays where it is) */
+    ok &= cap_root[0] == 0xFFu && cap_next[0] == 3u;
     phr_cap_page = 0;
     bad += check("(phrase-arp) step entry: REC armed and stopped, each note the next step, gates from the RATE", ok);
     return bad;

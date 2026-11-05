@@ -1951,6 +1951,7 @@ static void autosave_poll(void)
     }
     if (fm1_ms - as.t < (as.soon ? AS_SOON_MS : AS_IDLE_MS))
         return;
+    phr_persist();                                     /* (phrase-arp) a phrase edited on its page, at the quiet stop */
     if (!as.round) {                                   /* (phase 5) a round: the patterns kept, one erase a poll; */
         w = keep_waiting();                            /* then the project, RESTORE LAST ON */
         if (sig == as.saved && !w) {

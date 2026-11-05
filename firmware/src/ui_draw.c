@@ -968,15 +968,30 @@ static void draw_columns(void)
                                                          * #46) KNOB 4 the action, OCT+ does it: the footer) */
         return;
     }
-    if (cur_page()->graph == GR_PHR) {                   /* (phrase-arp) the phrase's screen: KNOB 1 the phrase,
-                                                         * KNOB 4 CLEAR (OCT+), the footer says it */
-        param_format(&TP[P_AMODE], TSEL->p[P_AMODE], val, &unit);
-        card_mot_of(&TSEL->p[P_AMODE]);
-        card_span_of(&TP[P_AMODE]);
-        draw_column(0, "PHRASE", val, unit, VR_LIVE, RATIO(&TP[P_AMODE], TSEL->p[P_AMODE]),
-                    param_icon(&TP[P_AMODE], TSEL->p[P_AMODE]));
-        draw_column(1, "", "--", "", VR_DIM, -1, ICON_NONE);
-        draw_column(2, "", "--", "", VR_DIM, -1, ICON_NONE);
+    if (cur_page()->graph == GR_PHR) {                   /* (phrase-arp) the phrase's roll: the cursor step's PITCH
+                                                         * and LENGTH, the phrase, CLEAR (OCT+) */
+        uint32_t id = (uint32_t)TSEL->p[P_AMODE] - AM_PHR1, cn = cap_next[trk_index(TSEL)] & 15u;
+        uint8_t b = phr_mode((uint32_t)TSEL->p[P_AMODE]) ? phr_step(id, cn) : 0;
+        uint32_t off4 = b >> 4u, gate = b & 15u;
+        if (!b || !phr_mode((uint32_t)TSEL->p[P_AMODE])) {   /* (empty: "--"; no phrase picked: the same) */
+            draw_column(0, "PITCH", "--", "", VR_DIM, -1, ICON_AUTO);
+            draw_column(1, "LENGTH", "--", "", VR_DIM, -1, ICON_AUTO);
+        } else {
+            int32_t off = off4 > 7u ? (int32_t)off4 - 16 : (int32_t)off4;
+            str_cpy(val, off > 0 ? "+" : "", 4);
+            fmt_int(val + str_len(val), off);
+            draw_column(0, "PITCH", val, "st", VR_LIVE, (int32_t)((off + 8) * 1000 / 15), ICON_AUTO);
+            fmt_int(val, (int32_t)gate * 100 / 15);
+            draw_column(1, "LENGTH", val, "%", VR_LIVE, (int32_t)gate * 1000 / 15, ICON_AUTO);
+        }
+        if (phr_mode((uint32_t)TSEL->p[P_AMODE])) {
+            str_cpy(val, "PH", 4);
+            fmt_int(val + 2, (int32_t)(TSEL->p[P_AMODE] - AM_PHR1) + 1);
+            draw_column(2, "PHRASE", val, "", VR_LIVE, (int32_t)(TSEL->p[P_AMODE] - AM_PHR1) * 1000 / (PHR_N - 1u),
+                        ICON_AUTO);
+        } else {
+            draw_column(2, "PHRASE", "--", "", VR_DIM, -1, ICON_AUTO);
+        }
         draw_act_column(3, "CLEAR", VR_THEME, ICON_AUTO);
         return;
     }

@@ -2137,12 +2137,13 @@ static int test_soak_cards(void)
  * held undoes it */
 static int test_presets_knob(void)
 {
-    int bad = 0, cur_ok = 1, sel_ok = 1, snd_ok = 1, undo_ok = 1, dir_ok = 0, grid_ok;
+    int bad = 0, cur_ok = 1, sel_ok = 1, snd_ok = 1, undo_ok = 1, dir_ok = 0, phr_ok = 1, grid_ok;
     uint32_t i, n_snd = 0, n_cur = 0;
     for (i = 0; i < NPAGES; i++) {
         track_t before;
         uint32_t g = PAGES[i].graph, uslot;
         int16_t slot;
+        uint32_t c0;
         ui_power_on();
         sel_set(0);
         my_steps(TSEL);
@@ -2152,6 +2153,7 @@ static int test_presets_knob(void)
         frame();
         before = *TSEL;
         uslot = ui.uslot; slot = song.g[G_SLOT];
+        c0 = cap_next[0];
         turn(EN_PRESET, 1);
         {
             int same_snd = TSEL->preset == before.preset && TSEL->eng_req == before.eng_req &&
@@ -2166,6 +2168,8 @@ static int test_presets_knob(void)
                 sel_ok &= ui.uslot == uslot + 1u && same_snd && same_steps;
             } else if (g == GR_BANK) {                 /* (Skiff) PATTERNS: the slot */
                 sel_ok &= ui.bslot == 1u && same_snd && same_steps;
+            } else if (g == GR_PHR) {                  /* (phrase-arp) the phrase's roll: the step cursor */
+                phr_ok &= cap_next[0] == (c0 + 1u) % 16u && same_snd && same_steps;
             } else if (g == GR_SONG) {                 /* (Skiff phase 5) SONG: the entry */
                 sel_ok &= sg.entry == 1u && same_snd && same_steps;
             } else if (g == GR_SLOTS) {
@@ -2184,6 +2188,7 @@ static int test_presets_knob(void)
     bad += check("#92 PRESETS on NOTES, FEEL: the step cursor; the sound and the steps stay", cur_ok && n_cur == 2u);
     bad += check("(2.0) PRESETS on PATTERN: the track's DIR, the steps and the cursor stay", dir_ok);
     bad += check("#94 PRESETS on USER, PATTERNS, PROJECT, AUTOMATION, SONG: the selection (KNOB 1's); nothing loaded", sel_ok);
+    bad += check("(phrase-arp) PRESETS on PHRASE: the phrase's step cursor; the sound and the steps stay", phr_ok);
     bad += check("#94 PRESETS elsewhere (EDIT, ENV, LFO, FX, SCL, ARP, MIXER, GLOBAL, ...): the next sound, the steps stay",
                  snd_ok && n_snd >= 15u);
     bad += check("#94   SAVE held undoes each of those loads", undo_ok);

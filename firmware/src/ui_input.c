@@ -1577,12 +1577,30 @@ static void edit_param(uint32_t slot, int32_t steps)
         ui.bact = (uint8_t)clamp((int32_t)ui.bact + (steps > 0 ? 1 : -1), 0, BA_N - 1);
         return;
     }
-    if (pg->graph == GR_PHR && slot == 0u) {             /* (phrase-arp) KNOB 1 the phrase, as ARP's MODE */
-        d = &TP[P_AMODE];
-        v = param_turn(d, TSEL->p[P_AMODE], accel(EN_K1, steps, 0));
-        TSEL->p[P_AMODE] = (int16_t)v;
-        motion_capture(TSEL, P_AMODE, TSEL->p[P_AMODE]);
-        ml_knob(TSEL, P_AMODE);
+    if (pg->graph == GR_PHR) {                           /* (phrase-arp) the phrase's roll, its steps by hand:
+                                                          * KNOB 1 the cursor step's PITCH, 2 its LENGTH, 3 the
+                                                          * phrase, 4 CLEAR (act_do) */
+        uint32_t id = (uint32_t)TSEL->p[P_AMODE] - AM_PHR1, c = cap_next[trk_index(TSEL)] & 15u;
+        uint8_t b = phr_mode((uint32_t)TSEL->p[P_AMODE]) ? phr_step(id, c) : 0;
+        uint32_t off4 = b >> 4u, gate = b & 15u;
+        if (slot == 2u) {                                /* which of the pool's phrases */
+            int32_t ph = phr_mode((uint32_t)TSEL->p[P_AMODE]) ? (int32_t)(TSEL->p[P_AMODE] - AM_PHR1) : 0;
+            TSEL->p[P_AMODE] = (int16_t)(AM_PHR1 + clamp(ph + steps, 0, (int32_t)PHR_N - 1));
+            motion_capture(TSEL, P_AMODE, TSEL->p[P_AMODE]);
+        } else if (!phr_mode((uint32_t)TSEL->p[P_AMODE])) {
+            return;                                      /* (no phrase: KNOB 3 picks one)
+                                                          */
+        } else if (slot == 0u) {                         /* PITCH: the note, semitones from the phrase's root */
+            int32_t off = off4 > 7u ? (int32_t)off4 - 16 : (int32_t)off4;
+            off = clamp(off + steps, -8, 7);
+            phr_set(id, c, (uint8_t)(((uint32_t)(off & 15) << 4) | gate));
+        } else if (slot == 1u) {                         /* LENGTH: the step's gate, 0 = it rests */
+            gate = (uint32_t)clamp((int32_t)gate + steps, 0, 15);
+            phr_set(id, c, (uint8_t)((off4 << 4) | gate));
+        } else
+            return;                                      /* (KNOB 4 is act_cols')
+                                                          */
+        ui.force = 1;
         return;
     }
     if ((act_cols() >> slot) & 1u) {                      /* an action's knob picks it (right) or drops it (left); */
@@ -1914,6 +1932,11 @@ static void presets_turn(int32_t s)
         t->p[P_DIR] = (int16_t)param_turn(track_desc(t, P_DIR), t->p[P_DIR], s);
         motion_capture(t, P_DIR, t->p[P_DIR]);
         ml_knob(t, P_DIR);
+    } else if (g == GR_PHR) {                             /* (phrase-arp) the phrase's roll: the step cursor */
+        uint32_t i = trk_index(TSEL);
+        int32_t c = ((int32_t)(cap_next[i] & 15u) + s) % 16;
+        cap_next[i] = (uint8_t)(c < 0 ? c + 16 : c);
+        ui.force = 1;
     } else if (sheet_of(g)) {                             /* (Skiff phase 8; FM6 LAB) a sheet's pick: DRUM-X's sound */
         sheet_of(g)->pick(s);                             /* (BD .. CB), FM6's operator */
     } else if (g == GR_SLICES) {                          /* ((Skiff U4, F7) SLICES: KNOB 1's, the slice; was nothing) */

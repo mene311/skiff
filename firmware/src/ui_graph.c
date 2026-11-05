@@ -650,9 +650,9 @@ static void graph_roll(const track_t *t, uint16_t c)
  * plays (no keys held: C4). */
 static void graph_phr(const track_t *t, uint16_t c)
 {
-    uint32_t i, s, id = (uint32_t)t->p[P_AMODE] - AM_PHR1, pl = phr_len_get(id), mask = scale_mask(t), used = 0;
+    uint32_t i, s, id = (uint32_t)t->p[P_AMODE] - AM_PHR1, mask = scale_mask(t), used = 0;
     int32_t root = phr_root(t), top, y0, ybot;
-    uint32_t ph = t->arp_idx % pl;
+    uint32_t ph = phr_playhead(t);
     char nb[8];
     if (root < 0)
         root = 60;                                   /* (no keys: the phrase's shape around C4) */
@@ -660,8 +660,6 @@ static void graph_phr(const track_t *t, uint16_t c)
     top = root + 7;                                  /* root+7 the highest row, root-8 the lowest */
     y0 = PR_Y0 + (PR_ROWS * PR_RH) / 2 - 7 * PR_RH;  /* the root's row mid-panel */
     ybot = y0 + 15 * PR_RH;
-    if (phr_capturing(t) && !song.playing)
-        ph = cap_next[trk_index(t)] & 15u;
     for (i = 0; i < 16u; i++) {                      /* the rows: the lane, the key, the C names */
         int32_t p = top - (int32_t)i, y = y0 + (int32_t)i * PR_RH;
         uint32_t pc = (uint32_t)(p % 12 + 12) % 12u;
@@ -694,12 +692,11 @@ static void graph_phr(const track_t *t, uint16_t c)
             cv_rect(x + 2, y, w, PR_RH - 1, i == ph && song.playing ? T_ACCENT : c);
         }
     }
-    {   /* the playhead: the step the clock stands on (or the next one in step entry), as the roll's line */
-        int32_t x = PR_X0 + (int32_t)ph * PR_CW;
+    {   /* the playhead (the roll's line) and the step entry's cursor (the roll's frame) */
+        int32_t x = PR_X0 + (int32_t)ph * PR_CW, xc = PR_X0 + (int32_t)(cap_next[trk_index(t)] & 15u) * PR_CW;
         if (song.playing)
             cv_rect(x + 6, y0, 1, 15 * PR_RH + 1, T_ACCENT);
-        else if (phr_capturing(t))
-            cv_frame(x, y0 - 2, PR_CW + 1, 15 * PR_RH + 5, T_TEXT);   /* the next step, framed */
+        cv_frame(xc, y0 - 2, PR_CW + 1, 15 * PR_RH + 5, phr_capturing(t) ? T_TEXT : T_DIM);
     }
     if (!used)
         cv_text(PR_X0, ybot + 4 - AF_S.asc, &AF_S, "EMPTY: REC TO RECORD", T_DIM);   /* (pg_text is ui_pgraph.c's, after) */
@@ -1707,9 +1704,8 @@ static uint32_t graph_signature(void)
             uint32_t pl = phr_len_get((uint32_t)t->p[P_AMODE] - AM_PHR1);
             for (i = 0; i < pl; i++)
                 h = (h ^ phr_step((uint32_t)t->p[P_AMODE] - AM_PHR1, i)) * 16777619u;
-            h = (h ^ (t->arp_idx % pl)) * 16777619u;
-            if (phr_capturing(t) && !song.playing)
-                h = (h ^ (cap_next[trk_index(t)] & 15u)) * 16777619u;
+            h = (h ^ phr_playhead(t)) * 16777619u;
+            h = (h ^ (cap_next[trk_index(t)] & 15u)) * 16777619u;
         }
     }
     if (pg->graph == GR_BANK)                        /* (Skiff phase 5) the pool, the one picked (and the lists: below) */

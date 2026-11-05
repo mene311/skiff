@@ -332,13 +332,23 @@ static uint8_t cap_root[NTRK] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};   /* (255:
 static uint8_t cap_note[NTRK] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 static uint32_t cap_tm[NTRK];
 static uint16_t cap_seen[NTRK];
-static uint8_t cap_next[NTRK];                  /* (step entry: the step the next note takes, the transport stopped) */
+static uint8_t cap_next[NTRK];                  /* (phrase-arp) the phrase's step cursor: step entry writes there and
+                                                 * moves on; PRESETS moves it (the roll's way) */
 static uint8_t phr_cap_page;                    /* (the phrase's screen shows: the ARP page family, no HOME, MENU,
                                                  * dialog or layer over it; ui_input sets it each frame) */
 static int phr_capturing(const track_t *t)      /* the keys write the phrase only while its screen shows; anywhere
                                                  * else REC with a phrase records what the arp plays into the steps */
 {
     return ((song.rec >> trk_index(t)) & 1u) && phr_mode((uint32_t)t->p[P_AMODE]) && phr_cap_page;
+}
+
+/* (phrase-arp) the step the phrase's screen marks: the capture's 16-step grid while it records (live: the clock's
+ * step, step entry: the next one), else the step the phrase's loop stands on */
+static uint32_t phr_playhead(const track_t *t)
+{
+    if (phr_capturing(t))
+        return song.playing ? (t->arp_idx & 15u) : (cap_next[trk_index(t)] & 15u);
+    return t->arp_idx % phr_len_get((uint32_t)t->p[P_AMODE] - AM_PHR1);
 }
 
 /* the phrase's root: the held notes' mapped pitch, the first played (ORDER PLAYED) or the lowest (ORDER NOTE); -1
@@ -374,10 +384,10 @@ static void phr_cap_on(track_t *t, uint32_t note, uint32_t vel)
         uint8_t v = phr_step(id, cap_step[i]);
         phr_set(id, cap_step[i], (uint8_t)(v | 15u));
     }
-    if (cap_root[i] == 0xFFu) {                      /* the pass's first note: the phrase root, step 0 */
+    if (cap_root[i] == 0xFFu) {                      /* the pass's first note: the phrase root, at the cursor */
         cap_root[i] = (uint8_t)note;
-        s = 0;
-        cap_next[i] = 1;
+        s = cap_next[i] & 15u;
+        cap_next[i] = (uint8_t)((s + 1u) & 15u);
         cap_was[i] = 1;                              /* (the pass is active: its end always resets and persists) */
         phr_undo_save(id);                           /* (phrase-arp) one undo: SAVE held puts the pass before back */
         t->arp_pos = 0xFFFFFFF;                      /* the clock starts now */
@@ -773,7 +783,6 @@ static void arp_step(track_t *t, uint32_t n, uint32_t gate_n)
             cap_root[i] = cap_note[i] = 0xFFu;
             cap_seen[i] = 0;
             cap_tm[i] = 0;
-            cap_next[i] = 0;
         }
         cap_was[i] = cap;
     }
